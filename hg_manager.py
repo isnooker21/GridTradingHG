@@ -313,12 +313,13 @@ class HGManager:
         self.active = True
         
         # จดจำ HG positions ที่มีอยู่แล้ว (ถ้ามี)
-        self.restore_existing_hg_positions()
+        restored_hg_count = self.restore_existing_hg_positions()
         
         logger.info(f"HG System started at {self.start_price:.2f}")
         logger.info(f"HG Distance: {config.hg.hg_distance} pips")
         logger.info(f"HG SL Trigger: {config.hg.hg_sl_trigger} pips")
         logger.info(f"HG Multiplier: {config.hg.hg_multiplier}x")
+        logger.info(f"Restored {restored_hg_count} existing HG positions")
     
     def stop_hg_system(self, close_positions: bool = False):
         """

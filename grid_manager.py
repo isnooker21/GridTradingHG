@@ -451,12 +451,11 @@ class GridManager:
             # ดึง level_key จาก comment
             comment = pos['comment']
             if config.mt5.comment_grid in comment:
-                # แยก level_key จาก comment (format: "GridBot_buy_-1")
+                # แยก level_key จาก comment (format: "GridBot_initial_buy", "GridBot_buy_0", etc.)
                 parts = comment.split('_')
                 if len(parts) >= 3:
-                    order_type = parts[1]  # buy หรือ sell
-                    level = parts[2]  # -1, -2, 1, 2, etc.
-                    level_key = f"{order_type}_{level}"
+                    # ดึง level_key ที่เหลือหลังจาก comment_grid
+                    level_key = '_'.join(parts[1:])  # เอาตั้งแต่ส่วนที่ 2 เป็นต้นไป
                     
                     # บันทึกลง placed_orders
                     self.placed_orders[level_key] = pos['ticket']
@@ -465,7 +464,7 @@ class GridManager:
                     self.grid_levels.append({
                         'level_key': level_key,
                         'price': pos['open_price'],
-                        'type': order_type,
+                        'type': pos['type'],
                         'tp': pos['tp'],
                         'placed': True,
                         'ticket': pos['ticket']
@@ -490,10 +489,14 @@ class GridManager:
         self.active = True
         
         # จดจำ Grid positions ที่มีอยู่แล้ว (ถ้ามี)
-        self.restore_existing_positions()
+        restored_count = self.restore_existing_positions()
         
-        # วางออเดอร์เริ่มต้น (Buy + Sell 1 ไม้)
-        self.place_initial_orders(self.start_price)
+        # วางออเดอร์เริ่มต้น (Buy + Sell 1 ไม้) เฉพาะเมื่อไม่มีไม้อยู่เลย
+        if restored_count == 0:
+            logger.info("No existing positions found - placing initial orders")
+            self.place_initial_orders(self.start_price)
+        else:
+            logger.info(f"Found {restored_count} existing positions - continuing from existing")
         
         logger.info(f"Grid Trading started at {self.start_price:.2f}")
         logger.info(f"Direction: {config.grid.direction}, Distance: {config.grid.grid_distance} pips")
