@@ -307,43 +307,43 @@ class GridManager:
     def recovery_wrong_direction_orders(self, current_price: float):
         """
         Recovery ไม้ที่ผิดทางตามระยะที่ตั้งไว้
+        ตรวจสอบโดยตรงจาก MT5 positions ไม่ต้องพึ่ง grid_levels
         """
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
         # อัพเดท positions เพื่อดูกำไร/ขาดทุน
         position_monitor.update_all_positions()
         
+        # ตรวจสอบ Grid positions ทั้งหมดจาก MT5 โดยตรง
+        grid_positions = position_monitor.grid_positions
+        
         # Recovery ไม้ Buy ที่ผิดทาง (เมื่อราคาลง)
-        for grid in self.grid_levels[:]:
-            if grid['type'] == 'buy' and grid['placed'] and 'ticket' in grid:
-                pos = position_monitor.get_position_by_ticket(grid['ticket'])
-                if pos:
-                    # คำนวณขาดทุนเป็น pips
-                    loss_pips = config.price_to_pips(pos['open_price'] - pos['current_price'])
-                    
-                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
-                    if loss_pips >= config.grid.grid_distance:
-                        recovery_key = f"recovery_buy_{grid['ticket']}"
-                        if recovery_key not in self.placed_orders:
-                            # วาง Sell เพื่อ Hedge (Recovery)
-                            self.place_recovery_sell_order(current_price, recovery_key, grid['ticket'])
-                            logger.info(f"Recovery: BUY {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with SELL at {current_price:.2f}")
+        for pos in grid_positions:
+            if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
+                # คำนวณขาดทุนเป็น pips
+                loss_pips = config.price_to_pips(pos['open_price'] - pos['current_price'])
+                
+                # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                if loss_pips >= config.grid.grid_distance:
+                    recovery_key = f"recovery_buy_{pos['ticket']}"
+                    if recovery_key not in self.placed_orders:
+                        # วาง Sell เพื่อ Hedge (Recovery)
+                        self.place_recovery_sell_order(current_price, recovery_key, pos['ticket'])
+                        logger.info(f"Recovery: BUY {pos['ticket']} loss {loss_pips:.0f} pips → Hedge with SELL at {current_price:.2f}")
         
         # Recovery ไม้ Sell ที่ผิดทาง (เมื่อราคาขึ้น)
-        for grid in self.grid_levels[:]:
-            if grid['type'] == 'sell' and grid['placed'] and 'ticket' in grid:
-                pos = position_monitor.get_position_by_ticket(grid['ticket'])
-                if pos:
-                    # คำนวณขาดทุนเป็น pips
-                    loss_pips = config.price_to_pips(pos['current_price'] - pos['open_price'])
-                    
-                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
-                    if loss_pips >= config.grid.grid_distance:
-                        recovery_key = f"recovery_sell_{grid['ticket']}"
-                        if recovery_key not in self.placed_orders:
-                            # วาง Buy เพื่อ Hedge (Recovery)
-                            self.place_recovery_buy_order(current_price, recovery_key, grid['ticket'])
-                            logger.info(f"Recovery: SELL {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with BUY at {current_price:.2f}")
+        for pos in grid_positions:
+            if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
+                # คำนวณขาดทุนเป็น pips
+                loss_pips = config.price_to_pips(pos['current_price'] - pos['open_price'])
+                
+                # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                if loss_pips >= config.grid.grid_distance:
+                    recovery_key = f"recovery_sell_{pos['ticket']}"
+                    if recovery_key not in self.placed_orders:
+                        # วาง Buy เพื่อ Hedge (Recovery)
+                        self.place_recovery_buy_order(current_price, recovery_key, pos['ticket'])
+                        logger.info(f"Recovery: SELL {pos['ticket']} loss {loss_pips:.0f} pips → Hedge with BUY at {current_price:.2f}")
     
     def place_recovery_buy_order(self, current_price: float, recovery_key: str, original_ticket: int):
         """
