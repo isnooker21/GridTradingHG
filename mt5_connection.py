@@ -145,9 +145,30 @@ class MT5Connection:
             Dict ที่มี bid และ ask price หรือ None ถ้าเกิดข้อผิดพลาด
         """
         try:
+            # ตรวจสอบการเชื่อมต่อ
+            if not self.connected:
+                logger.error("MT5 not connected")
+                return None
+            
+            # ตรวจสอบ symbol
+            symbol_info = mt5.symbol_info(self.symbol)
+            if symbol_info is None:
+                logger.error(f"Symbol {self.symbol} not found or not available")
+                return None
+            
+            # ดึงราคา
             tick = mt5.symbol_info_tick(self.symbol)
             if tick is None:
+                logger.error(f"Cannot get tick data for {self.symbol}")
+                logger.error(f"Last error: {mt5.last_error()}")
                 return None
+            
+            # ตรวจสอบราคา
+            if tick.bid == 0.0 or tick.ask == 0.0:
+                logger.error(f"Invalid price data: bid={tick.bid}, ask={tick.ask}")
+                return None
+            
+            logger.debug(f"Price: {self.symbol} bid={tick.bid:.2f}, ask={tick.ask:.2f}")
             
             return {
                 'bid': tick.bid,

@@ -163,6 +163,9 @@ class TradingGUI:
         ttk.Button(control_frame, text="🔄 Refresh", 
                   command=self.refresh_status).pack(side=tk.LEFT, padx=5)
         
+        ttk.Button(control_frame, text="🧪 Test Price", 
+                  command=self.test_price_connection).pack(side=tk.LEFT, padx=5)
+        
         # ============ Status Display ============
         status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="10")
         status_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
@@ -358,7 +361,14 @@ class TradingGUI:
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
         if not price_info:
-            messagebox.showerror("Error", "Cannot get current price!")
+            error_msg = "Cannot get current price!\n\nPossible causes:\n"
+            error_msg += "1. Symbol not available in broker\n"
+            error_msg += "2. Market closed\n"
+            error_msg += "3. Symbol not selected in MT5\n"
+            error_msg += "4. Network connection issue\n\n"
+            error_msg += "Please check MT5 terminal and try again."
+            messagebox.showerror("Error", error_msg)
+            self.log_message("✗ Failed to get current price - check MT5 terminal")
             return
         
         current_price = price_info['bid']
@@ -435,6 +445,25 @@ class TradingGUI:
         self.update_display()
         self.log_message("🔄 Status refreshed")
     
+    def test_price_connection(self):
+        """ทดสอบการเชื่อมต่อและดึงราคา"""
+        self.log_message("🧪 Testing price connection...")
+        
+        if not mt5_connection.connected:
+            self.log_message("✗ MT5 not connected")
+            messagebox.showerror("Error", "Please connect to MT5 first!")
+            return
+        
+        # ทดสอบดึงราคา
+        price_info = mt5_connection.get_current_price()
+        
+        if price_info:
+            self.log_message(f"✓ Price test successful: {price_info['bid']:.2f}")
+            messagebox.showinfo("Success", f"Price connection OK!\n\nBid: {price_info['bid']:.2f}\nAsk: {price_info['ask']:.2f}\nSymbol: {mt5_connection.symbol}")
+        else:
+            self.log_message("✗ Price test failed")
+            messagebox.showerror("Error", "Cannot get price data!\n\nPlease check:\n1. Symbol is available in MT5\n2. Market is open\n3. Symbol is selected in MT5")
+    
     def monitoring_loop(self):
         """
         Loop หลักสำหรับ monitoring ระบบ
@@ -506,6 +535,8 @@ class TradingGUI:
             price_info = mt5_connection.get_current_price()
             if price_info:
                 self.price_var.set(f"{price_info['bid']:.2f}")
+            else:
+                self.price_var.set("No Price Data")
             
             # แสดง warnings
             if summary['warnings']:
