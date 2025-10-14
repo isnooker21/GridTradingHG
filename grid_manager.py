@@ -56,9 +56,9 @@ class GridManager:
         
         return levels
     
-    def place_grid_orders(self, current_price: float):
+    def place_initial_orders(self, current_price: float):
         """
-        วาง Grid orders ตามระดับที่คำนวณไว้
+        วางออเดอร์เริ่มต้น: Buy 1 ไม้ + Sell 1 ไม้ ที่ราคาปัจจุบัน
         
         Args:
             current_price: ราคาปัจจุบัน
@@ -66,81 +66,66 @@ class GridManager:
         if not self.active:
             return
         
-        # คำนวณ levels
-        levels = self.calculate_grid_levels(current_price, num_levels=5)
+        logger.info("Placing initial orders...")
         
-        for level in levels:
-            # ตรวจสอบว่ามี order ที่ระดับนี้อยู่แล้วหรือไม่
-            level_key = f"{level['type']}_{level['level']}"
-            if level_key in self.placed_orders:
-                continue
+        # คำนวณ TP (ใช้ระยะเท่ากับ Grid Distance)
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        buy_tp = current_price + tp_distance
+        sell_tp = current_price - tp_distance
+        
+        orders_placed = 0
+        
+        # วาง Buy order
+        if config.grid.direction in ['buy', 'both']:
+            comment = f"{config.mt5.comment_grid}_initial_buy"
+            ticket = mt5_connection.place_order(
+                order_type='buy',
+                volume=config.grid.lot_size,
+                tp=buy_tp,
+                comment=comment
+            )
             
-            # คำนวณ TP (ใช้ระยะเท่ากับ Grid Distance)
-            tp_distance = config.pips_to_price(config.grid.grid_distance)
-            if level['type'] == 'buy':
-                tp_price = level['price'] + tp_distance
-            else:
-                tp_price = level['price'] - tp_distance
+            if ticket:
+                self.placed_orders['initial_buy'] = ticket
+                self.grid_levels.append({
+                    'level_key': 'initial_buy',
+                    'price': current_price,
+                    'type': 'buy',
+                    'tp': buy_tp,
+                    'placed': True,
+                    'ticket': ticket
+                })
+                orders_placed += 1
+                logger.info(f"Initial BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {buy_tp:.2f} | Ticket: {ticket}")
+        
+        # วาง Sell order
+        if config.grid.direction in ['sell', 'both']:
+            comment = f"{config.mt5.comment_grid}_initial_sell"
+            ticket = mt5_connection.place_order(
+                order_type='sell',
+                volume=config.grid.lot_size,
+                tp=sell_tp,
+                comment=comment
+            )
             
-            # วาง order (ใช้ limit order)
-            # หมายเหตุ: ในกรณีนี้เราจะใช้ market order เมื่อราคาถึง
-            # สำหรับ limit order ต้องใช้ ORDER_TYPE_BUY_LIMIT / ORDER_TYPE_SELL_LIMIT
-            # แต่เพื่อความง่ายเราจะวาง market order เมื่อราคาถึงระดับ
-            
-            self.grid_levels.append({
-                'level_key': level_key,
-                'price': level['price'],
-                'type': level['type'],
-                'tp': tp_price,
-                'placed': False
-            })
+            if ticket:
+                self.placed_orders['initial_sell'] = ticket
+                self.grid_levels.append({
+                    'level_key': 'initial_sell',
+                    'price': current_price,
+                    'type': 'sell',
+                    'tp': sell_tp,
+                    'placed': True,
+                    'ticket': ticket
+                })
+                orders_placed += 1
+                logger.info(f"Initial SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {sell_tp:.2f} | Ticket: {ticket}")
+        
+        logger.info(f"✓ Initial orders placed: {orders_placed} orders")
     
-    def monitor_grid_levels(self):
+    def monitor_grid_positions(self):
         """
-        ตรวจสอบว่าราคาถึง Grid levels หรือยัง และวาง order
-        """
-        if not self.active:
-            return
-        
-        price_info = mt5_connection.get_current_price()
-        if not price_info:
-            return
-        
-        current_price = price_info['bid']
-        
-        for grid in self.grid_levels:
-            if grid['placed']:
-                continue
-            
-            # ตรวจสอบว่าราคาถึงระดับนี้หรือยัง
-            should_place = False
-            
-            if grid['type'] == 'buy' and current_price <= grid['price']:
-                should_place = True
-            elif grid['type'] == 'sell' and current_price >= grid['price']:
-                should_place = True
-            
-            if should_place:
-                # วาง market order
-                comment = f"{config.mt5.comment_grid}_{grid['level_key']}"
-                ticket = mt5_connection.place_order(
-                    order_type=grid['type'],
-                    volume=config.grid.lot_size,
-                    tp=grid['tp'],
-                    comment=comment
-                )
-                
-                if ticket:
-                    grid['placed'] = True
-                    grid['ticket'] = ticket
-                    self.placed_orders[grid['level_key']] = ticket
-                    logger.info(f"Grid order placed at {grid['price']:.2f} | {grid['type'].upper()}")
-    
-    def monitor_grid_tp(self):
-        """
-        ตรวจสอบและปิด positions ที่ถึง TP
-        (MT5 จะปิด automatically ถ้าตั้ง TP ไว้)
-        แต่เราจะอัพเดทสถานะ Grid
+        ติดตาม Grid positions และวางใหม่เมื่อปิด
         """
         if not self.active:
             return
@@ -148,25 +133,130 @@ class GridManager:
         # อัพเดท positions
         position_monitor.update_all_positions()
         
-        # ตรวจสอบ Grid levels ที่ถูกปิดแล้ว
-        for grid in self.grid_levels:
-            if not grid['placed']:
-                continue
-            
-            if 'ticket' not in grid:
+        # ตรวจสอบ Grid positions ที่ถูกปิดแล้ว
+        for grid in self.grid_levels[:]:  # ใช้ slice เพื่อป้องกันปัญหาเมื่อลบ element
+            if not grid['placed'] or 'ticket' not in grid:
                 continue
             
             # ตรวจสอบว่า position ยังเปิดอยู่หรือไม่
             pos = position_monitor.get_position_by_ticket(grid['ticket'])
             
             if pos is None:
-                # Position ถูกปิดแล้ว (ถึง TP หรือถูกปิดด้วยวิธีอื่น)
+                # Position ถูกปิดแล้ว (ถึง TP)
                 logger.info(f"Grid closed: {grid['level_key']} at {grid['price']:.2f}")
                 
-                # รีเซ็ต Grid level นี้เพื่อวางใหม่
-                grid['placed'] = False
+                # ลบออกจาก list
+                self.grid_levels.remove(grid)
                 if grid['level_key'] in self.placed_orders:
                     del self.placed_orders[grid['level_key']]
+                
+                # วาง Grid ใหม่
+                self.place_new_grid_when_price_moves()
+    
+    def place_new_grid_when_price_moves(self):
+        """
+        วาง Grid ใหม่เมื่อราคาเคลื่อนไหวตามระยะที่ตั้งไว้
+        """
+        if not self.active:
+            return
+        
+        # ดึงราคาปัจจุบัน
+        price_info = mt5_connection.get_current_price()
+        if not price_info:
+            return
+        
+        current_price = price_info['bid']
+        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
+        
+        # ตรวจสอบว่าต้องวาง Buy ใหม่หรือไม่
+        if config.grid.direction in ['buy', 'both']:
+            # หา Buy position ที่ต่ำสุด
+            lowest_buy_price = None
+            for grid in self.grid_levels:
+                if grid['type'] == 'buy' and grid['placed']:
+                    if lowest_buy_price is None or grid['price'] < lowest_buy_price:
+                        lowest_buy_price = grid['price']
+            
+            # ถ้าราคาลงมากกว่า Grid Distance จาก Buy ต่ำสุด
+            if lowest_buy_price and current_price <= (lowest_buy_price - grid_distance_price):
+                self.place_new_buy_order(current_price)
+        
+        # ตรวจสอบว่าต้องวาง Sell ใหม่หรือไม่
+        if config.grid.direction in ['sell', 'both']:
+            # หา Sell position ที่สูงสุด
+            highest_sell_price = None
+            for grid in self.grid_levels:
+                if grid['type'] == 'sell' and grid['placed']:
+                    if highest_sell_price is None or grid['price'] > highest_sell_price:
+                        highest_sell_price = grid['price']
+            
+            # ถ้าราคาขึ้นมากกว่า Grid Distance จาก Sell สูงสุด
+            if highest_sell_price and current_price >= (highest_sell_price + grid_distance_price):
+                self.place_new_sell_order(current_price)
+    
+    def place_new_buy_order(self, current_price: float):
+        """
+        วาง Buy order ใหม่
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price + tp_distance
+        
+        # สร้าง level_key ที่ไม่ซ้ำ
+        buy_count = sum(1 for grid in self.grid_levels if grid['type'] == 'buy')
+        level_key = f"buy_{buy_count}"
+        
+        comment = f"{config.mt5.comment_grid}_{level_key}"
+        ticket = mt5_connection.place_order(
+            order_type='buy',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[level_key] = ticket
+            self.grid_levels.append({
+                'level_key': level_key,
+                'price': current_price,
+                'type': 'buy',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket
+            })
+            
+            logger.info(f"New BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+    
+    def place_new_sell_order(self, current_price: float):
+        """
+        วาง Sell order ใหม่
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price - tp_distance
+        
+        # สร้าง level_key ที่ไม่ซ้ำ
+        sell_count = sum(1 for grid in self.grid_levels if grid['type'] == 'sell')
+        level_key = f"sell_{sell_count}"
+        
+        comment = f"{config.mt5.comment_grid}_{level_key}"
+        ticket = mt5_connection.place_order(
+            order_type='sell',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[level_key] = ticket
+            self.grid_levels.append({
+                'level_key': level_key,
+                'price': current_price,
+                'type': 'sell',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket
+            })
+            
+            logger.info(f"New SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
     
     def update_grid_status(self):
         """
@@ -175,11 +265,8 @@ class GridManager:
         if not self.active:
             return
         
-        # ตรวจสอบระดับที่ต้องวาง order
-        self.monitor_grid_levels()
-        
-        # ตรวจสอบ TP
-        self.monitor_grid_tp()
+        # ติดตาม Grid positions
+        self.monitor_grid_positions()
     
     def restore_existing_positions(self):
         """
@@ -245,8 +332,8 @@ class GridManager:
         # จดจำ Grid positions ที่มีอยู่แล้ว (ถ้ามี)
         self.restore_existing_positions()
         
-        # วาง Grid levels เริ่มต้น
-        self.place_grid_orders(self.start_price)
+        # วางออเดอร์เริ่มต้น (Buy + Sell 1 ไม้)
+        self.place_initial_orders(self.start_price)
         
         logger.info(f"Grid Trading started at {self.start_price:.2f}")
         logger.info(f"Direction: {config.grid.direction}, Distance: {config.grid.grid_distance} pips")
