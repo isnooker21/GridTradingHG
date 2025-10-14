@@ -119,10 +119,10 @@ class GridManager:
     
     def place_new_order_immediately(self, order_type: str):
         """
-        วางไม้ใหม่ทันทีเมื่อไม้เก่า TP (ไม่รอให้ราคาเคลื่อนไหว)
+        วางไม้ใหม่ทันทีเมื่อไม้เก่า TP (วางทั้ง Buy และ Sell)
         
         Args:
-            order_type: buy หรือ sell
+            order_type: buy หรือ sell (ไม่ใช้แล้ว - วางทั้งคู่เสมอ)
         """
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
@@ -131,9 +131,11 @@ class GridManager:
         
         current_price = price_info['bid']
         
-        if order_type == 'buy':
+        # วางทั้ง Buy และ Sell ทันที
+        if config.grid.direction in ['buy', 'both']:
             self.place_new_buy_order(current_price)
-        else:
+        
+        if config.grid.direction in ['sell', 'both']:
             self.place_new_sell_order(current_price)
     
     def place_new_buy_order(self, current_price: float):
