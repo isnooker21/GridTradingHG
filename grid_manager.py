@@ -181,6 +181,64 @@ class GridManager:
             
             logger.info(f"New SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
     
+    def place_recovery_buy_order(self, current_price: float, recovery_key: str, original_ticket: int):
+        """
+        วาง Buy order สำหรับ Recovery (Hedge)
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price + tp_distance
+        
+        comment = f"{config.mt5.comment_grid}_{recovery_key}"
+        ticket = mt5_connection.place_order(
+            order_type='buy',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[recovery_key] = ticket
+            self.grid_levels.append({
+                'level_key': recovery_key,
+                'price': current_price,
+                'type': 'buy',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket,
+                'recovery_for': original_ticket  # เก็บ ticket ต้นฉบับ
+            })
+            
+            logger.info(f"Recovery BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+    
+    def place_recovery_sell_order(self, current_price: float, recovery_key: str, original_ticket: int):
+        """
+        วาง Sell order สำหรับ Recovery (Hedge)
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price - tp_distance
+        
+        comment = f"{config.mt5.comment_grid}_{recovery_key}"
+        ticket = mt5_connection.place_order(
+            order_type='sell',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[recovery_key] = ticket
+            self.grid_levels.append({
+                'level_key': recovery_key,
+                'price': current_price,
+                'type': 'sell',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket,
+                'recovery_for': original_ticket  # เก็บ ticket ต้นฉบับ
+            })
+            
+            logger.info(f"Recovery SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+    
     def update_grid_status(self):
         """
         อัพเดทสถานะ Grid ทั้งหมด
@@ -232,8 +290,9 @@ class GridManager:
     
     def check_grid_distance_and_place_orders(self):
         """
-        ตรวจสอบ Grid Distance และวางไม้ใหม่เมื่อราคาเคลื่อนไหวตามระยะที่ตั้งไว้
-        เมื่อ direction = both จะวางทั้ง Buy และ Sell พร้อมกัน
+        ตรวจสอบ Grid Distance และ Recovery ไม้ที่ผิดทาง
+        - ไม้ที่กำไร → ปล่อยให้ TP ตามปกติ
+        - ไม้ที่ขาดทุน → เมื่อถึงระยะที่ตั้งไว้ ให้วางไม้ฝั่งตรงข้ามเพื่อ Hedge
         """
         if not self.active:
             return
@@ -246,47 +305,40 @@ class GridManager:
         current_price = price_info['bid']
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
-        # ตรวจสอบ Buy trigger
-        buy_triggered = False
-        if config.grid.direction in ['buy', 'both']:
-            # หา Buy position ที่ต่ำสุด
-            lowest_buy_price = None
-            for grid in self.grid_levels:
-                if grid['type'] == 'buy' and grid['placed']:
-                    if lowest_buy_price is None or grid['price'] < lowest_buy_price:
-                        lowest_buy_price = grid['price']
-            
-            # ถ้าราคาลงมากกว่า Grid Distance จาก Buy ต่ำสุด
-            buy_triggered = lowest_buy_price and current_price <= (lowest_buy_price - grid_distance_price)
+        # อัพเดท positions เพื่อดูกำไร/ขาดทุน
+        position_monitor.update_all_positions()
         
-        # ตรวจสอบ Sell trigger
-        sell_triggered = False
-        if config.grid.direction in ['sell', 'both']:
-            # หา Sell position ที่สูงสุด
-            highest_sell_price = None
-            for grid in self.grid_levels:
-                if grid['type'] == 'sell' and grid['placed']:
-                    if highest_sell_price is None or grid['price'] > highest_sell_price:
-                        highest_sell_price = grid['price']
-            
-            # ถ้าราคาขึ้นมากกว่า Grid Distance จาก Sell สูงสุด
-            sell_triggered = highest_sell_price and current_price >= (highest_sell_price + grid_distance_price)
+        # ตรวจสอบไม้ Buy ที่ขาดทุน
+        for grid in self.grid_levels[:]:
+            if grid['type'] == 'buy' and grid['placed'] and 'ticket' in grid:
+                pos = position_monitor.get_position_by_ticket(grid['ticket'])
+                if pos:
+                    # คำนวณขาดทุนเป็น pips
+                    loss_pips = config.price_to_pips(pos['open_price'] - pos['current_price'])
+                    
+                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                    if loss_pips >= config.grid.grid_distance:
+                        recovery_key = f"recovery_buy_{grid['ticket']}"
+                        if recovery_key not in self.placed_orders:
+                            # วาง Sell เพื่อ Hedge
+                            self.place_recovery_sell_order(current_price, recovery_key, grid['ticket'])
+                            logger.info(f"Recovery: BUY {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with SELL at {current_price:.2f}")
         
-        # วาง orders ตามเงื่อนไข
-        if config.grid.direction == 'both' and (buy_triggered or sell_triggered):
-            # เมื่อ direction = both และมี trigger ใดๆ ให้วางทั้งคู่
-            self.place_new_buy_order(current_price)
-            self.place_new_sell_order(current_price)
-            logger.info(f"Grid Distance triggered (Both): New BUY & SELL placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
-        else:
-            # เมื่อ direction ไม่ใช่ both ให้วางตาม trigger เดิม
-            if buy_triggered:
-                self.place_new_buy_order(current_price)
-                logger.info(f"Grid Distance triggered: New BUY placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
-            
-            if sell_triggered:
-                self.place_new_sell_order(current_price)
-                logger.info(f"Grid Distance triggered: New SELL placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
+        # ตรวจสอบไม้ Sell ที่ขาดทุน
+        for grid in self.grid_levels[:]:
+            if grid['type'] == 'sell' and grid['placed'] and 'ticket' in grid:
+                pos = position_monitor.get_position_by_ticket(grid['ticket'])
+                if pos:
+                    # คำนวณขาดทุนเป็น pips
+                    loss_pips = config.price_to_pips(pos['current_price'] - pos['open_price'])
+                    
+                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                    if loss_pips >= config.grid.grid_distance:
+                        recovery_key = f"recovery_sell_{grid['ticket']}"
+                        if recovery_key not in self.placed_orders:
+                            # วาง Buy เพื่อ Hedge
+                            self.place_recovery_buy_order(current_price, recovery_key, grid['ticket'])
+                            logger.info(f"Recovery: SELL {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with BUY at {current_price:.2f}")
     
     def restore_existing_positions(self):
         """
