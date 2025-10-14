@@ -34,32 +34,34 @@ class HGManager:
         hg_distance_price = config.pips_to_price(config.hg.hg_distance)
         
         # ตรวจสอบแต่ละ level
-        for i in range(1, 11):  # สูงสุด 10 levels
-            # HG Buy (ด้านล่าง)
-            level_price_buy = self.start_price - (hg_distance_price * i)
-            level_key_buy = f"HG_BUY_{i}"
+        for i in range(1, config.hg.max_hg_levels + 1):  # ใช้ค่าจาก config
+            # HG Buy (ด้านล่าง) - เฉพาะเมื่อเปิดใช้งานและเลือก buy/both
+            if config.hg.direction in ['buy', 'both']:
+                level_price_buy = self.start_price - (hg_distance_price * i)
+                level_key_buy = f"HG_BUY_{i}"
+                
+                if current_price <= level_price_buy and level_key_buy not in self.placed_hg:
+                    logger.info(f"HG Trigger detected: {level_key_buy} | Target: {level_price_buy:.2f} | Current: {current_price:.2f}")
+                    triggers.append({
+                        'level_key': level_key_buy,
+                        'price': level_price_buy,
+                        'type': 'buy',
+                        'level': -i
+                    })
             
-            if current_price <= level_price_buy and level_key_buy not in self.placed_hg:
-                logger.info(f"HG Trigger detected: {level_key_buy} | Target: {level_price_buy:.2f} | Current: {current_price:.2f}")
-                triggers.append({
-                    'level_key': level_key_buy,
-                    'price': level_price_buy,
-                    'type': 'buy',
-                    'level': -i
-                })
-            
-            # HG Sell (ด้านบน)
-            level_price_sell = self.start_price + (hg_distance_price * i)
-            level_key_sell = f"HG_SELL_{i}"
-            
-            if current_price >= level_price_sell and level_key_sell not in self.placed_hg:
-                logger.info(f"HG Trigger detected: {level_key_sell} | Target: {level_price_sell:.2f} | Current: {current_price:.2f}")
-                triggers.append({
-                    'level_key': level_key_sell,
-                    'price': level_price_sell,
-                    'type': 'sell',
-                    'level': i
-                })
+            # HG Sell (ด้านบน) - เฉพาะเมื่อเปิดใช้งานและเลือก sell/both
+            if config.hg.direction in ['sell', 'both']:
+                level_price_sell = self.start_price + (hg_distance_price * i)
+                level_key_sell = f"HG_SELL_{i}"
+                
+                if current_price >= level_price_sell and level_key_sell not in self.placed_hg:
+                    logger.info(f"HG Trigger detected: {level_key_sell} | Target: {level_price_sell:.2f} | Current: {current_price:.2f}")
+                    triggers.append({
+                        'level_key': level_key_sell,
+                        'price': level_price_sell,
+                        'type': 'sell',
+                        'level': i
+                    })
         
         return triggers
     
@@ -133,7 +135,7 @@ class HGManager:
         ติดตามกำไรของ HG positions
         และตั้ง breakeven SL เมื่อถึงเงื่อนไข
         """
-        if not self.active:
+        if not self.active or not config.hg.enabled:
             return
         
         # อัพเดท positions
@@ -196,7 +198,7 @@ class HGManager:
         - ติดตาม breakeven ของ HG ที่เปิดอยู่
         - รีเซ็ต HG เมื่อไม้ Grid หมด
         """
-        if not self.active:
+        if not self.active or not config.hg.enabled:
             return
         
         # ตรวจสอบว่าต้องรีเซ็ต HG หรือไม่ (เมื่อไม้ Grid หมด)
@@ -223,7 +225,7 @@ class HGManager:
         ตรวจสอบว่าไม้ Grid หมดหรือไม่
         ถ้าหมด ให้รีเซ็ต HG start_price และ placed_hg
         """
-        if not self.active:
+        if not self.active or not config.hg.enabled:
             return
         
         # อัพเดท positions

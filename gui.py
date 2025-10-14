@@ -122,25 +122,47 @@ class TradingGUI:
         hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings", padding="10")
         hg_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N), pady=5)
         
+        # HG Enable/Disable
+        self.hg_enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(hg_frame, text="Enable HG System", 
+                       variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=3)
+        
+        # HG Direction
+        ttk.Label(hg_frame, text="HG Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.hg_direction_var = tk.StringVar(value="both")
+        hg_direction_frame = ttk.Frame(hg_frame)
+        hg_direction_frame.grid(row=1, column=1, sticky=tk.W, pady=3)
+        ttk.Radiobutton(hg_direction_frame, text="Buy Only", variable=self.hg_direction_var, 
+                       value="buy").pack(side=tk.LEFT)
+        ttk.Radiobutton(hg_direction_frame, text="Sell Only", variable=self.hg_direction_var, 
+                       value="sell").pack(side=tk.LEFT)
+        ttk.Radiobutton(hg_direction_frame, text="Both", variable=self.hg_direction_var, 
+                       value="both").pack(side=tk.LEFT)
+        
         # HG Distance
-        ttk.Label(hg_frame, text="HG Distance (pips):").grid(row=0, column=0, sticky=tk.W, pady=3)
+        ttk.Label(hg_frame, text="HG Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
         self.hg_distance_var = tk.IntVar(value=2000)
-        ttk.Entry(hg_frame, textvariable=self.hg_distance_var, width=15).grid(row=0, column=1, pady=3)
+        ttk.Entry(hg_frame, textvariable=self.hg_distance_var, width=15).grid(row=2, column=1, pady=3)
         
         # HG SL Trigger
-        ttk.Label(hg_frame, text="HG SL Trigger (pips):").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(hg_frame, text="HG SL Trigger (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
         self.hg_sl_trigger_var = tk.IntVar(value=1000)
-        ttk.Entry(hg_frame, textvariable=self.hg_sl_trigger_var, width=15).grid(row=1, column=1, pady=3)
+        ttk.Entry(hg_frame, textvariable=self.hg_sl_trigger_var, width=15).grid(row=3, column=1, pady=3)
         
         # SL Buffer
-        ttk.Label(hg_frame, text="SL Buffer (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
+        ttk.Label(hg_frame, text="SL Buffer (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
         self.sl_buffer_var = tk.IntVar(value=20)
-        ttk.Entry(hg_frame, textvariable=self.sl_buffer_var, width=15).grid(row=2, column=1, pady=3)
+        ttk.Entry(hg_frame, textvariable=self.sl_buffer_var, width=15).grid(row=4, column=1, pady=3)
         
         # HG Multiplier
-        ttk.Label(hg_frame, text="HG Multiplier:").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(hg_frame, text="HG Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=3)
         self.hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(hg_frame, textvariable=self.hg_multiplier_var, width=15).grid(row=3, column=1, pady=3)
+        ttk.Entry(hg_frame, textvariable=self.hg_multiplier_var, width=15).grid(row=5, column=1, pady=3)
+        
+        # Max HG Levels
+        ttk.Label(hg_frame, text="Max HG Levels:").grid(row=6, column=0, sticky=tk.W, pady=3)
+        self.max_hg_levels_var = tk.IntVar(value=10)
+        ttk.Entry(hg_frame, textvariable=self.max_hg_levels_var, width=15).grid(row=6, column=1, pady=3)
         
         # ============ Controls ============
         control_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="10")
@@ -321,10 +343,13 @@ class TradingGUI:
             )
             
             config.update_hg_settings(
+                enabled=self.hg_enabled_var.get(),
+                direction=self.hg_direction_var.get(),
                 hg_distance=self.hg_distance_var.get(),
                 hg_sl_trigger=self.hg_sl_trigger_var.get(),
                 sl_buffer=self.sl_buffer_var.get(),
-                hg_multiplier=self.hg_multiplier_var.get()
+                hg_multiplier=self.hg_multiplier_var.get(),
+                max_hg_levels=self.max_hg_levels_var.get()
             )
             
             # บันทึกลงไฟล์
@@ -344,10 +369,13 @@ class TradingGUI:
         self.lot_size_var.set(config.grid.lot_size)
         self.tp_var.set(config.grid.take_profit)
         
+        self.hg_enabled_var.set(config.hg.enabled)
+        self.hg_direction_var.set(config.hg.direction)
         self.hg_distance_var.set(config.hg.hg_distance)
         self.hg_sl_trigger_var.set(config.hg.hg_sl_trigger)
         self.sl_buffer_var.set(config.hg.sl_buffer)
         self.hg_multiplier_var.set(config.hg.hg_multiplier)
+        self.max_hg_levels_var.set(config.hg.max_hg_levels)
     
     def start_trading(self):
         """เริ่มต้นระบบเทรด"""

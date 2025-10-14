@@ -17,10 +17,13 @@ class GridSettings:
 @dataclass
 class HGSettings:
     """การตั้งค่า Hedge (HG)"""
+    enabled: bool = True      # เปิด/ปิดระบบ HG
+    direction: str = "both"   # ทิศทาง HG: buy, sell, both
     hg_distance: int = 2000   # ระยะห่างที่วาง HG (pips)
     hg_sl_trigger: int = 1000 # ระยะที่จะตั้ง SL breakeven (pips)
     sl_buffer: int = 20       # buffer สำหรับ SL (pips)
     hg_multiplier: float = 1.2 # ตัวคูณสำหรับคำนวณ HG lot
+    max_hg_levels: int = 10   # จำนวน HG levels สูงสุด
     
 @dataclass
 class MT5Settings:
@@ -68,10 +71,13 @@ class Config:
             
             # HG Settings
             if 'HG' in parser:
+                self.hg.enabled = parser.getboolean('HG', 'enabled', fallback=True)
+                self.hg.direction = parser.get('HG', 'direction', fallback='both')
                 self.hg.hg_distance = parser.getint('HG', 'hg_distance', fallback=2000)
                 self.hg.hg_sl_trigger = parser.getint('HG', 'hg_sl_trigger', fallback=1000)
                 self.hg.sl_buffer = parser.getint('HG', 'sl_buffer', fallback=20)
                 self.hg.hg_multiplier = parser.getfloat('HG', 'hg_multiplier', fallback=1.2)
+                self.hg.max_hg_levels = parser.getint('HG', 'max_hg_levels', fallback=10)
             
             # MT5 Settings
             if 'MT5' in parser:
@@ -102,10 +108,13 @@ class Config:
         
         # HG Section
         parser['HG'] = {
+            'enabled': str(self.hg.enabled),
+            'direction': self.hg.direction,
             'hg_distance': str(self.hg.hg_distance),
             'hg_sl_trigger': str(self.hg.hg_sl_trigger),
             'sl_buffer': str(self.hg.sl_buffer),
-            'hg_multiplier': str(self.hg.hg_multiplier)
+            'hg_multiplier': str(self.hg.hg_multiplier),
+            'max_hg_levels': str(self.hg.max_hg_levels)
         }
         
         # MT5 Section
