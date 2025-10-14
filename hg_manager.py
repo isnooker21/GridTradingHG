@@ -264,7 +264,7 @@ class HGManager:
         
         if not hg_positions:
             logger.info("No existing HG positions found")
-            return
+            return 0
         
         # จดจำ HG positions ที่มีอยู่
         restored_count = 0

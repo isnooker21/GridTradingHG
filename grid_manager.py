@@ -443,7 +443,7 @@ class GridManager:
         
         if not grid_positions:
             logger.info("No existing Grid positions found")
-            return
+            return 0
         
         # จดจำ Grid positions ที่มีอยู่
         restored_count = 0
