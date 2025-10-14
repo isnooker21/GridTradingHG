@@ -6,7 +6,7 @@ Grid Trading System with Hedge (HG) for XAUUSD
 ===============================================
 
 ระบบเทรด Grid แบบอัตโนมัติพร้อม Hedge (HG) สำหรับ XAUUSD
-เชื่อมต่อกับ MetaTrader 5 สำหรับการเทรดบน DEMO account
+เชื่อมต่อกับ MetaTrader 5 และส่ง orders จริงไปยัง MT5
 
 Features:
 - Grid Trading System (ระยะห่างปรับได้)
@@ -45,7 +45,7 @@ def main():
         logger.info("Grid Trading System with HG - Starting...")
         logger.info("=" * 60)
         logger.info("Symbol: XAUUSD")
-        logger.info("Mode: DEMO Trading")
+        logger.info("Mode: LIVE Trading (Real Orders to MT5)")
         logger.info("=" * 60)
         
         # รัน GUI
