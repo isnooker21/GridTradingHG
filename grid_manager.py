@@ -233,10 +233,9 @@ class GridManager:
     
     def check_grid_distance_and_place_orders(self):
         """
-        ตรวจสอบ Grid Distance และวางไม้ใหม่ตาม Logic:
-        - ราคาลง: เก็บ TP Sell + วางทั้ง Buy และ Sell ใหม่
-        - ราคาย้อนกลับ: เก็บ TP Buy + แก้ไม้ Sell ที่ผิดทาง
-        - ราคาขึ้นทะลุ: วางทั้ง Buy และ Sell ใหม่
+        ตรวจสอบ Grid Distance แยกการทำงานของ Buy และ Sell:
+        - ราคาลง: วาง Buy ใหม่ + Recovery Sell ที่ผิดทาง
+        - ราคาขึ้น: วาง Sell ใหม่ + Recovery Buy ที่ผิดทาง
         """
         if not self.active:
             return
@@ -262,112 +261,147 @@ class GridManager:
                 if latest_sell_price is None or grid['price'] < latest_sell_price:
                     latest_sell_price = grid['price']
         
-        # ตรวจสอบเงื่อนไขการวางไม้
-        should_place_orders = False
-        action_type = ""
-        
-        # กรณี 1: ราคาลง (เก็บ TP Sell)
+        # ตรวจสอบเงื่อนไขการวางไม้ Buy
+        buy_triggered = False
         if latest_sell_price and current_price <= (latest_sell_price - grid_distance_price):
-            should_place_orders = True
-            action_type = "ราคาลง - เก็บ TP Sell"
+            buy_triggered = True
         
-        # กรณี 2: ราคาขึ้นทะลุไม้ Buy ล่าสุด
-        elif latest_buy_price and current_price >= (latest_buy_price + grid_distance_price):
-            should_place_orders = True
-            action_type = "ราคาขึ้นทะลุ - วางทั้ง Buy และ Sell"
+        # ตรวจสอบเงื่อนไขการวางไม้ Sell
+        sell_triggered = False
+        if latest_buy_price and current_price >= (latest_buy_price + grid_distance_price):
+            sell_triggered = True
         
-        # วางไม้ใหม่เมื่อถึงเงื่อนไข
-        if should_place_orders:
-            # ตรวจสอบว่ามีไม้อยู่ใกล้ราคาปัจจุบันแล้วหรือไม่
-            has_nearby_orders = False
+        # วางไม้ Buy ใหม่เมื่อถึงเงื่อนไข
+        if buy_triggered:
+            has_nearby_buy = False
             nearby_distance = grid_distance_price * 0.5
             
             for grid in self.grid_levels:
-                if grid['placed']:
+                if grid['type'] == 'buy' and grid['placed']:
                     if abs(grid['price'] - current_price) < nearby_distance:
-                        has_nearby_orders = True
+                        has_nearby_buy = True
                         break
             
-            if not has_nearby_orders:
+            if not has_nearby_buy:
                 self.place_new_buy_order(current_price)
+                logger.info(f"Grid Distance triggered (ราคาลง): New BUY placed at {current_price:.2f}")
+        
+        # วางไม้ Sell ใหม่เมื่อถึงเงื่อนไข
+        if sell_triggered:
+            has_nearby_sell = False
+            nearby_distance = grid_distance_price * 0.5
+            
+            for grid in self.grid_levels:
+                if grid['type'] == 'sell' and grid['placed']:
+                    if abs(grid['price'] - current_price) < nearby_distance:
+                        has_nearby_sell = True
+                        break
+            
+            if not has_nearby_sell:
                 self.place_new_sell_order(current_price)
-                logger.info(f"Grid Distance triggered ({action_type}): New BUY & SELL placed at {current_price:.2f}")
+                logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL placed at {current_price:.2f}")
         
-        # กรณี 3: ราคาย้อนกลับ (เก็บ TP Buy + แก้ไม้ Sell ที่ผิดทาง)
-        # กรณี 4: ราคาย้อนลง (เก็บ TP Sell + แก้ไม้ Buy ที่ผิดทาง)
-        # ตรวจสอบไม้ที่ผิดทางและแก้ไข
-        self.fix_wrong_direction_sells(current_price)
-        self.fix_wrong_direction_buys(current_price)
+        # Recovery ไม้ที่ผิดทาง
+        self.recovery_wrong_direction_orders(current_price)
     
-    def fix_wrong_direction_sells(self, current_price: float):
+    def recovery_wrong_direction_orders(self, current_price: float):
         """
-        แก้ไม้ Sell ที่ผิดทางเมื่อราคาย้อนกลับขึ้น
+        Recovery ไม้ที่ผิดทางตามระยะที่ตั้งไว้
         """
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
-        # หาไม้ Buy ที่สูงสุด (เพื่อดูว่าต้องแก้ไม้ Sell ที่ต่ำกว่าหรือไม่)
-        highest_buy_price = None
-        for grid in self.grid_levels:
-            if grid['type'] == 'buy' and grid['placed']:
-                if highest_buy_price is None or grid['price'] > highest_buy_price:
-                    highest_buy_price = grid['price']
+        # อัพเดท positions เพื่อดูกำไร/ขาดทุน
+        position_monitor.update_all_positions()
         
-        if highest_buy_price is None:
-            return
-        
-        # ตรวจสอบไม้ Sell ที่ผิดทาง (ต่ำกว่าไม้ Buy สูงสุด + Grid Distance)
-        for grid in self.grid_levels[:]:
-            if grid['type'] == 'sell' and grid['placed'] and 'ticket' in grid:
-                # ถ้าไม้ Sell อยู่ต่ำกว่าไม้ Buy สูงสุด + Grid Distance
-                if grid['price'] < (highest_buy_price - grid_distance_price):
-                    # ปิดไม้ Sell ที่ผิดทาง
-                    success = mt5_connection.close_order(grid['ticket'])
-                    if success:
-                        logger.info(f"Fixed wrong direction SELL: Closed {grid['ticket']} at {grid['price']:.2f}")
-                        
-                        # เปิดไม้ Sell ใหม่ที่ราคาปัจจุบัน
-                        self.place_new_sell_order(current_price)
-                        logger.info(f"Fixed: New SELL placed at {current_price:.2f}")
-                        
-                        # ลบออกจาก grid_levels
-                        self.grid_levels.remove(grid)
-                        if grid['level_key'] in self.placed_orders:
-                            del self.placed_orders[grid['level_key']]
-    
-    def fix_wrong_direction_buys(self, current_price: float):
-        """
-        แก้ไม้ Buy ที่ผิดทางเมื่อราคาย้อนกลับลง
-        """
-        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
-        
-        # หาไม้ Sell ที่ต่ำสุด (เพื่อดูว่าต้องแก้ไม้ Buy ที่สูงกว่าหรือไม่)
-        lowest_sell_price = None
-        for grid in self.grid_levels:
-            if grid['type'] == 'sell' and grid['placed']:
-                if lowest_sell_price is None or grid['price'] < lowest_sell_price:
-                    lowest_sell_price = grid['price']
-        
-        if lowest_sell_price is None:
-            return
-        
-        # ตรวจสอบไม้ Buy ที่ผิดทาง (สูงกว่าไม้ Sell ต่ำสุด + Grid Distance)
+        # Recovery ไม้ Buy ที่ผิดทาง (เมื่อราคาลง)
         for grid in self.grid_levels[:]:
             if grid['type'] == 'buy' and grid['placed'] and 'ticket' in grid:
-                # ถ้าไม้ Buy อยู่สูงกว่าไม้ Sell ต่ำสุด + Grid Distance
-                if grid['price'] > (lowest_sell_price + grid_distance_price):
-                    # ปิดไม้ Buy ที่ผิดทาง
-                    success = mt5_connection.close_order(grid['ticket'])
-                    if success:
-                        logger.info(f"Fixed wrong direction BUY: Closed {grid['ticket']} at {grid['price']:.2f}")
-                        
-                        # เปิดไม้ Buy ใหม่ที่ราคาปัจจุบัน
-                        self.place_new_buy_order(current_price)
-                        logger.info(f"Fixed: New BUY placed at {current_price:.2f}")
-                        
-                        # ลบออกจาก grid_levels
-                        self.grid_levels.remove(grid)
-                        if grid['level_key'] in self.placed_orders:
-                            del self.placed_orders[grid['level_key']]
+                pos = position_monitor.get_position_by_ticket(grid['ticket'])
+                if pos:
+                    # คำนวณขาดทุนเป็น pips
+                    loss_pips = config.price_to_pips(pos['open_price'] - pos['current_price'])
+                    
+                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                    if loss_pips >= config.grid.grid_distance:
+                        recovery_key = f"recovery_buy_{grid['ticket']}"
+                        if recovery_key not in self.placed_orders:
+                            # วาง Sell เพื่อ Hedge (Recovery)
+                            self.place_recovery_sell_order(current_price, recovery_key, grid['ticket'])
+                            logger.info(f"Recovery: BUY {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with SELL at {current_price:.2f}")
+        
+        # Recovery ไม้ Sell ที่ผิดทาง (เมื่อราคาขึ้น)
+        for grid in self.grid_levels[:]:
+            if grid['type'] == 'sell' and grid['placed'] and 'ticket' in grid:
+                pos = position_monitor.get_position_by_ticket(grid['ticket'])
+                if pos:
+                    # คำนวณขาดทุนเป็น pips
+                    loss_pips = config.price_to_pips(pos['current_price'] - pos['open_price'])
+                    
+                    # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
+                    if loss_pips >= config.grid.grid_distance:
+                        recovery_key = f"recovery_sell_{grid['ticket']}"
+                        if recovery_key not in self.placed_orders:
+                            # วาง Buy เพื่อ Hedge (Recovery)
+                            self.place_recovery_buy_order(current_price, recovery_key, grid['ticket'])
+                            logger.info(f"Recovery: SELL {grid['ticket']} loss {loss_pips:.0f} pips → Hedge with BUY at {current_price:.2f}")
+    
+    def place_recovery_buy_order(self, current_price: float, recovery_key: str, original_ticket: int):
+        """
+        วาง Buy order สำหรับ Recovery (Hedge)
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price + tp_distance
+        
+        comment = f"{config.mt5.comment_grid}_{recovery_key}"
+        ticket = mt5_connection.place_order(
+            order_type='buy',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[recovery_key] = ticket
+            self.grid_levels.append({
+                'level_key': recovery_key,
+                'price': current_price,
+                'type': 'buy',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket,
+                'recovery_for': original_ticket
+            })
+            
+            logger.info(f"Recovery BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+    
+    def place_recovery_sell_order(self, current_price: float, recovery_key: str, original_ticket: int):
+        """
+        วาง Sell order สำหรับ Recovery (Hedge)
+        """
+        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_price = current_price - tp_distance
+        
+        comment = f"{config.mt5.comment_grid}_{recovery_key}"
+        ticket = mt5_connection.place_order(
+            order_type='sell',
+            volume=config.grid.lot_size,
+            tp=tp_price,
+            comment=comment
+        )
+        
+        if ticket:
+            self.placed_orders[recovery_key] = ticket
+            self.grid_levels.append({
+                'level_key': recovery_key,
+                'price': current_price,
+                'type': 'sell',
+                'tp': tp_price,
+                'placed': True,
+                'ticket': ticket,
+                'recovery_for': original_ticket
+            })
+            
+            logger.info(f"Recovery SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
     
     def restore_existing_positions(self):
         """
