@@ -191,8 +191,44 @@ class GridManager:
         # ติดตาม Grid positions
         self.monitor_grid_positions()
         
+        # ตรวจสอบว่ามีไม้เหลืออยู่ไหม ถ้าไม่มีให้วางใหม่
+        self.check_and_restart_if_no_positions()
+        
         # ตรวจสอบ Grid Distance และวางไม้ใหม่
         self.check_grid_distance_and_place_orders()
+    
+    def check_and_restart_if_no_positions(self):
+        """
+        ตรวจสอบว่ามีไม้ Grid เหลืออยู่ในพอร์ตไหม
+        ถ้าไม่มีเลย ให้วางไม้ใหม่ทันที (Auto Restart)
+        """
+        if not self.active:
+            return
+        
+        # อัพเดท positions
+        position_monitor.update_all_positions()
+        
+        # นับจำนวน Grid positions ที่เปิดอยู่
+        grid_positions = position_monitor.grid_positions
+        
+        # ถ้าไม่มีไม้เลย และ grid_levels ว่างเปล่า
+        if len(grid_positions) == 0 and len(self.grid_levels) == 0:
+            logger.info("=" * 60)
+            logger.info("⚠️ No Grid positions found - Auto Restarting...")
+            logger.info("=" * 60)
+            
+            # ดึงราคาปัจจุบัน
+            price_info = mt5_connection.get_current_price()
+            if not price_info:
+                logger.error("Cannot get current price for restart")
+                return
+            
+            current_price = price_info['bid']
+            
+            # วางไม้ใหม่
+            self.place_initial_orders(current_price)
+            
+            logger.info(f"✓ Grid Auto Restarted at {current_price:.2f}")
     
     def check_grid_distance_and_place_orders(self):
         """

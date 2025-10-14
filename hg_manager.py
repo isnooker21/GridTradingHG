@@ -194,9 +194,13 @@ class HGManager:
         จัดการ HG หลายระดับ
         - ตรวจสอบและวาง HG ใหม่เมื่อถึง trigger
         - ติดตาม breakeven ของ HG ที่เปิดอยู่
+        - รีเซ็ต HG เมื่อไม้ Grid หมด
         """
         if not self.active:
             return
+        
+        # ตรวจสอบว่าต้องรีเซ็ต HG หรือไม่ (เมื่อไม้ Grid หมด)
+        self.check_and_reset_hg_if_grid_empty()
         
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
@@ -213,6 +217,35 @@ class HGManager:
         
         # ติดตามกำไรและตั้ง breakeven
         self.monitor_hg_profit()
+    
+    def check_and_reset_hg_if_grid_empty(self):
+        """
+        ตรวจสอบว่าไม้ Grid หมดหรือไม่
+        ถ้าหมด ให้รีเซ็ต HG start_price และ placed_hg
+        """
+        if not self.active:
+            return
+        
+        # อัพเดท positions
+        position_monitor.update_all_positions()
+        
+        # ตรวจสอบว่ามีไม้ Grid เหลืออยู่ไหม
+        grid_positions = position_monitor.grid_positions
+        
+        # ถ้าไม้ Grid หมด และมี HG อยู่
+        if len(grid_positions) == 0 and len(self.placed_hg) > 0:
+            logger.info("=" * 60)
+            logger.info("⚠️ All Grid positions closed - Resetting HG system...")
+            logger.info("=" * 60)
+            
+            # รีเซ็ต HG
+            self.placed_hg = {}
+            
+            # อัพเดท start_price เป็นราคาปัจจุบัน
+            price_info = mt5_connection.get_current_price()
+            if price_info:
+                self.start_price = price_info['bid']
+                logger.info(f"✓ HG System Reset - New start price: {self.start_price:.2f}")
     
     def restore_existing_hg_positions(self):
         """
