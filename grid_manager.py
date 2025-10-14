@@ -31,6 +31,7 @@ class GridManager:
             return
         
         logger.info("Placing initial orders...")
+        logger.info(f"Direction setting: {config.grid.direction}")
         
         # คำนวณ TP (ใช้ระยะเท่ากับ Grid Distance)
         tp_distance = config.pips_to_price(config.grid.grid_distance)
@@ -196,6 +197,7 @@ class GridManager:
     def check_grid_distance_and_place_orders(self):
         """
         ตรวจสอบ Grid Distance และวางไม้ใหม่เมื่อราคาเคลื่อนไหวตามระยะที่ตั้งไว้
+        เมื่อ direction = both จะวางทั้ง Buy และ Sell พร้อมกัน
         """
         if not self.active:
             return
@@ -208,7 +210,8 @@ class GridManager:
         current_price = price_info['bid']
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
-        # ตรวจสอบว่าต้องวาง Buy ใหม่หรือไม่
+        # ตรวจสอบ Buy trigger
+        buy_triggered = False
         if config.grid.direction in ['buy', 'both']:
             # หา Buy position ที่ต่ำสุด
             lowest_buy_price = None
@@ -218,11 +221,10 @@ class GridManager:
                         lowest_buy_price = grid['price']
             
             # ถ้าราคาลงมากกว่า Grid Distance จาก Buy ต่ำสุด
-            if lowest_buy_price and current_price <= (lowest_buy_price - grid_distance_price):
-                self.place_new_buy_order(current_price)
-                logger.info(f"Grid Distance triggered: New BUY placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
+            buy_triggered = lowest_buy_price and current_price <= (lowest_buy_price - grid_distance_price)
         
-        # ตรวจสอบว่าต้องวาง Sell ใหม่หรือไม่
+        # ตรวจสอบ Sell trigger
+        sell_triggered = False
         if config.grid.direction in ['sell', 'both']:
             # หา Sell position ที่สูงสุด
             highest_sell_price = None
@@ -232,7 +234,21 @@ class GridManager:
                         highest_sell_price = grid['price']
             
             # ถ้าราคาขึ้นมากกว่า Grid Distance จาก Sell สูงสุด
-            if highest_sell_price and current_price >= (highest_sell_price + grid_distance_price):
+            sell_triggered = highest_sell_price and current_price >= (highest_sell_price + grid_distance_price)
+        
+        # วาง orders ตามเงื่อนไข
+        if config.grid.direction == 'both' and (buy_triggered or sell_triggered):
+            # เมื่อ direction = both และมี trigger ใดๆ ให้วางทั้งคู่
+            self.place_new_buy_order(current_price)
+            self.place_new_sell_order(current_price)
+            logger.info(f"Grid Distance triggered (Both): New BUY & SELL placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
+        else:
+            # เมื่อ direction ไม่ใช่ both ให้วางตาม trigger เดิม
+            if buy_triggered:
+                self.place_new_buy_order(current_price)
+                logger.info(f"Grid Distance triggered: New BUY placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
+            
+            if sell_triggered:
                 self.place_new_sell_order(current_price)
                 logger.info(f"Grid Distance triggered: New SELL placed at {current_price:.2f} (distance: {grid_distance_price:.2f})")
     

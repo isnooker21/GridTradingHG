@@ -40,6 +40,7 @@ class HGManager:
             level_key_buy = f"HG_BUY_{i}"
             
             if current_price <= level_price_buy and level_key_buy not in self.placed_hg:
+                logger.info(f"HG Trigger detected: {level_key_buy} | Target: {level_price_buy:.2f} | Current: {current_price:.2f}")
                 triggers.append({
                     'level_key': level_key_buy,
                     'price': level_price_buy,
@@ -52,6 +53,7 @@ class HGManager:
             level_key_sell = f"HG_SELL_{i}"
             
             if current_price >= level_price_sell and level_key_sell not in self.placed_hg:
+                logger.info(f"HG Trigger detected: {level_key_sell} | Target: {level_price_sell:.2f} | Current: {current_price:.2f}")
                 triggers.append({
                     'level_key': level_key_sell,
                     'price': level_price_sell,
