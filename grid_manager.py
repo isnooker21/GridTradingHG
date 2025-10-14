@@ -306,102 +306,76 @@ class GridManager:
     
     def recovery_wrong_direction_orders(self, current_price: float):
         """
-        Recovery ไม้ที่ผิดทางตามระยะที่ตั้งไว้
-        ตรวจสอบโดยตรงจาก MT5 positions ไม่ต้องพึ่ง grid_levels
+        แก้ไม้ที่ผิดทางแบบเฉลี่ยราคา (Averaging)
+        - จับแค่ไม้ล่าสุดของแต่ละฝั่ง (Buy/Sell)
+        - ถ้าราคาห่างจากไม้ล่าสุด >= Grid Distance → ออกไม้เพิ่ม
+        - ถ้าไม้ล่าสุด TP ปิดไป → ขยับมาจับไม้ถัดไป
+        - เคารพโหมด Buy/Sell/Both ที่ตั้งไว้
         """
+        if not self.active:
+            return
+        
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
         # อัพเดท positions เพื่อดูกำไร/ขาดทุน
         position_monitor.update_all_positions()
         
-        # ตรวจสอบ Grid positions ทั้งหมดจาก MT5 โดยตรง
+        # ตรวจสอบ Grid positions ทั้งหมดจาก MT5
         grid_positions = position_monitor.grid_positions
         
-        # Recovery ไม้ Buy ที่ผิดทาง (เมื่อราคาลง)
-        for pos in grid_positions:
-            if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
-                # คำนวณขาดทุนเป็น pips
-                loss_pips = config.price_to_pips(pos['open_price'] - pos['current_price'])
-                
-                # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
-                if loss_pips >= config.grid.grid_distance:
-                    recovery_key = f"recovery_buy_{pos['ticket']}"
-                    if recovery_key not in self.placed_orders:
-                        # วาง Sell เพื่อ Hedge (Recovery)
-                        self.place_recovery_sell_order(current_price, recovery_key, pos['ticket'])
-                        logger.info(f"Recovery: BUY {pos['ticket']} loss {loss_pips:.0f} pips → Hedge with SELL at {current_price:.2f}")
-        
-        # Recovery ไม้ Sell ที่ผิดทาง (เมื่อราคาขึ้น)
-        for pos in grid_positions:
-            if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
-                # คำนวณขาดทุนเป็น pips
-                loss_pips = config.price_to_pips(pos['current_price'] - pos['open_price'])
-                
-                # ถ้าขาดทุน >= Grid Distance และยังไม่เคย Recovery
-                if loss_pips >= config.grid.grid_distance:
-                    recovery_key = f"recovery_sell_{pos['ticket']}"
-                    if recovery_key not in self.placed_orders:
-                        # วาง Buy เพื่อ Hedge (Recovery)
-                        self.place_recovery_buy_order(current_price, recovery_key, pos['ticket'])
-                        logger.info(f"Recovery: SELL {pos['ticket']} loss {loss_pips:.0f} pips → Hedge with BUY at {current_price:.2f}")
-    
-    def place_recovery_buy_order(self, current_price: float, recovery_key: str, original_ticket: int):
-        """
-        วาง Buy order สำหรับ Recovery (Hedge)
-        """
-        tp_distance = config.pips_to_price(config.grid.grid_distance)
-        tp_price = current_price + tp_distance
-        
-        comment = f"{config.mt5.comment_grid}_{recovery_key}"
-        ticket = mt5_connection.place_order(
-            order_type='buy',
-            volume=config.grid.lot_size,
-            tp=tp_price,
-            comment=comment
-        )
-        
-        if ticket:
-            self.placed_orders[recovery_key] = ticket
-            self.grid_levels.append({
-                'level_key': recovery_key,
-                'price': current_price,
-                'type': 'buy',
-                'tp': tp_price,
-                'placed': True,
-                'ticket': ticket,
-                'recovery_for': original_ticket
-            })
+        # แก้ไม้ Buy (เฉพาะเมื่อโหมดเป็น 'buy' หรือ 'both')
+        if config.grid.direction in ['buy', 'both']:
+            # หาไม้ Buy ล่าสุด (ราคาต่ำสุด)
+            latest_buy = None
+            for pos in grid_positions:
+                if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
+                    if latest_buy is None or pos['open_price'] < latest_buy['open_price']:
+                        latest_buy = pos
             
-            logger.info(f"Recovery BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
-    
-    def place_recovery_sell_order(self, current_price: float, recovery_key: str, original_ticket: int):
-        """
-        วาง Sell order สำหรับ Recovery (Hedge)
-        """
-        tp_distance = config.pips_to_price(config.grid.grid_distance)
-        tp_price = current_price - tp_distance
+            # ตรวจสอบว่าควรออก Buy เพิ่มไหม
+            if latest_buy:
+                distance_from_latest = config.price_to_pips(latest_buy['open_price'] - current_price)
+                
+                if distance_from_latest >= config.grid.grid_distance:
+                    # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
+                    nearby_distance = grid_distance_price * 0.5
+                    has_nearby_buy = False
+                    
+                    for pos in grid_positions:
+                        if pos['type'] == 'buy' and abs(pos['open_price'] - current_price) < nearby_distance:
+                            has_nearby_buy = True
+                            break
+                    
+                    if not has_nearby_buy:
+                        self.place_new_buy_order(current_price)
+                        logger.info(f"✓ Recovery BUY: Latest buy {latest_buy['ticket']} at {latest_buy['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add BUY")
         
-        comment = f"{config.mt5.comment_grid}_{recovery_key}"
-        ticket = mt5_connection.place_order(
-            order_type='sell',
-            volume=config.grid.lot_size,
-            tp=tp_price,
-            comment=comment
-        )
-        
-        if ticket:
-            self.placed_orders[recovery_key] = ticket
-            self.grid_levels.append({
-                'level_key': recovery_key,
-                'price': current_price,
-                'type': 'sell',
-                'tp': tp_price,
-                'placed': True,
-                'ticket': ticket,
-                'recovery_for': original_ticket
-            })
+        # แก้ไม้ Sell (เฉพาะเมื่อโหมดเป็น 'sell' หรือ 'both')
+        if config.grid.direction in ['sell', 'both']:
+            # หาไม้ Sell ล่าสุด (ราคาสูงสุด)
+            latest_sell = None
+            for pos in grid_positions:
+                if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
+                    if latest_sell is None or pos['open_price'] > latest_sell['open_price']:
+                        latest_sell = pos
             
-            logger.info(f"Recovery SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+            # ตรวจสอบว่าควรออก Sell เพิ่มไหม
+            if latest_sell:
+                distance_from_latest = config.price_to_pips(current_price - latest_sell['open_price'])
+                
+                if distance_from_latest >= config.grid.grid_distance:
+                    # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
+                    nearby_distance = grid_distance_price * 0.5
+                    has_nearby_sell = False
+                    
+                    for pos in grid_positions:
+                        if pos['type'] == 'sell' and abs(pos['open_price'] - current_price) < nearby_distance:
+                            has_nearby_sell = True
+                            break
+                    
+                    if not has_nearby_sell:
+                        self.place_new_sell_order(current_price)
+                        logger.info(f"✓ Recovery SELL: Latest sell {latest_sell['ticket']} at {latest_sell['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add SELL")
     
     def restore_existing_positions(self):
         """
