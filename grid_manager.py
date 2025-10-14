@@ -19,6 +19,7 @@ class GridManager:
         self.grid_levels = []  # เก็บระดับราคา Grid ที่วางไว้
         self.placed_orders = {}  # เก็บ ticket และข้อมูล orders ที่วางไว้
         self.start_price = 0.0
+        self.last_order_time = {}  # เก็บเวลาล่าสุดที่วางไม้แต่ละประเภท
     
     def place_initial_orders(self, current_price: float):
         """
@@ -120,8 +121,7 @@ class GridManager:
     
     def place_replacement_order_after_tp(self, order_type: str):
         """
-        วางไม้ใหม่ทันทีเมื่อไม้ TP ปิดไป
-        เพื่อให้มีไม้ต่อเนื่องในระบบ
+        วางไม้ใหม่เมื่อไม้ TP ปิดไป (มีป้องกันการวางซ้ำ)
         
         Args:
             order_type: 'buy' หรือ 'sell'
@@ -139,13 +139,30 @@ class GridManager:
         if order_type == 'sell' and config.grid.direction not in ['sell', 'both']:
             return
         
-        # วางไม้ใหม่
-        if order_type == 'buy':
-            self.place_new_buy_order(current_price)
-            logger.info(f"✓ Replacement BUY placed after TP at {current_price:.2f}")
+        # อัพเดท positions เพื่อเช็คไม้ที่มีอยู่
+        position_monitor.update_all_positions()
+        grid_positions = position_monitor.grid_positions
+        
+        # ตรวจสอบว่ามีไม้อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
+        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
+        nearby_distance = grid_distance_price * 0.5
+        has_nearby_order = False
+        
+        for pos in grid_positions:
+            if pos['type'] == order_type and abs(pos['open_price'] - current_price) < nearby_distance:
+                has_nearby_order = True
+                break
+        
+        # ถ้าไม่มีไม้อยู่ใกล้ → วางไม้ใหม่
+        if not has_nearby_order:
+            if order_type == 'buy':
+                self.place_new_buy_order(current_price)
+                logger.info(f"✓ Replacement BUY placed after TP at {current_price:.2f}")
+            else:
+                self.place_new_sell_order(current_price)
+                logger.info(f"✓ Replacement SELL placed after TP at {current_price:.2f}")
         else:
-            self.place_new_sell_order(current_price)
-            logger.info(f"✓ Replacement SELL placed after TP at {current_price:.2f}")
+            logger.info(f"⚠ Skipped replacement {order_type.upper()} - nearby order exists at {current_price:.2f}")
     
     def place_new_buy_order(self, current_price: float):
         """
@@ -310,6 +327,8 @@ class GridManager:
                 if not has_nearby_buy:
                     self.place_new_buy_order(current_price)
                     logger.info(f"Grid Distance triggered (ราคาลง): New BUY placed at {current_price:.2f}")
+                else:
+                    logger.info(f"⚠ Skipped Grid BUY - nearby order exists at {current_price:.2f}")
         
         # ตรวจสอบเงื่อนไขการวางไม้ Sell (ราคาขึ้น)
         if config.grid.direction in ['sell', 'both']:
@@ -326,6 +345,8 @@ class GridManager:
                 if not has_nearby_sell:
                     self.place_new_sell_order(current_price)
                     logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL placed at {current_price:.2f}")
+                else:
+                    logger.info(f"⚠ Skipped Grid SELL - nearby order exists at {current_price:.2f}")
         
         # Recovery ไม้ที่ผิดทาง
         self.recovery_wrong_direction_orders(current_price)
@@ -375,6 +396,8 @@ class GridManager:
                     if not has_nearby_buy:
                         self.place_new_buy_order(current_price)
                         logger.info(f"✓ Recovery BUY: Latest buy {latest_buy['ticket']} at {latest_buy['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add BUY")
+                    else:
+                        logger.info(f"⚠ Skipped Recovery BUY - nearby order exists at {current_price:.2f}")
         
         # แก้ไม้ Sell (เฉพาะเมื่อโหมดเป็น 'sell' หรือ 'both')
         if config.grid.direction in ['sell', 'both']:
@@ -402,6 +425,8 @@ class GridManager:
                     if not has_nearby_sell:
                         self.place_new_sell_order(current_price)
                         logger.info(f"✓ Recovery SELL: Latest sell {latest_sell['ticket']} at {latest_sell['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add SELL")
+                    else:
+                        logger.info(f"⚠ Skipped Recovery SELL - nearby order exists at {current_price:.2f}")
     
     def restore_existing_positions(self):
         """
