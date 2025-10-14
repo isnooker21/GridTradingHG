@@ -20,6 +20,55 @@ class MT5Connection:
         self.symbol = config.mt5.symbol
         self.magic_number = config.mt5.magic_number
         self.deviation = config.mt5.deviation
+    
+    def find_symbol_with_suffix(self, base_symbol: str = "XAUUSD") -> Optional[str]:
+        """
+        ค้นหาชื่อ symbol ที่ถูกต้องตามโบรกเกอร์ (รองรับ suffix)
+        
+        Args:
+            base_symbol: ชื่อพื้นฐานของคู่เงิน เช่น "XAUUSD"
+            
+        Returns:
+            ชื่อ symbol ที่พบ หรือ None
+        """
+        try:
+            # ลองชื่อปกติก่อน
+            symbol_check = mt5.symbol_info(base_symbol)
+            if symbol_check is not None:
+                logger.info(f"✓ Found symbol: {base_symbol}")
+                return base_symbol
+            
+            # ค้นหา symbols ทั้งหมดที่ขึ้นต้นด้วย base_symbol
+            logger.info(f"Searching for symbol starting with: {base_symbol}")
+            all_symbols = mt5.symbols_get()
+            
+            if all_symbols is None:
+                logger.error("Cannot get symbols list from MT5")
+                return None
+            
+            # ค้นหา symbol ที่ตรงกับชื่อพื้นฐาน
+            found_symbols = []
+            for symbol in all_symbols:
+                if symbol.name.startswith(base_symbol):
+                    found_symbols.append(symbol.name)
+            
+            if len(found_symbols) == 0:
+                logger.error(f"❌ Cannot find any symbol starting with {base_symbol}")
+                logger.info(f"Available symbols in your broker: {[s.name for s in all_symbols[:20]]}...")
+                return None
+            
+            # ถ้าเจอหลาย symbols ให้แสดงรายการ
+            if len(found_symbols) > 1:
+                logger.info(f"Found multiple symbols: {found_symbols}")
+                logger.info(f"Using first match: {found_symbols[0]}")
+            
+            selected_symbol = found_symbols[0]
+            logger.info(f"✓ Found symbol with suffix: {selected_symbol}")
+            return selected_symbol
+            
+        except Exception as e:
+            logger.error(f"Error finding symbol: {e}")
+            return None
         
     def connect_to_mt5(self, login: Optional[int] = None, 
                       password: Optional[str] = None, 
@@ -47,10 +96,24 @@ class MT5Connection:
                     logger.error(f"MT5 login failed: {mt5.last_error()}")
                     return False
             
-            # ตรวจสอบว่า symbol มีอยู่
+            # ค้นหา symbol ที่ถูกต้องตามโบรกเกอร์ (รองรับ suffix)
+            logger.info(f"Checking symbol: {self.symbol}")
+            correct_symbol = self.find_symbol_with_suffix(self.symbol)
+            
+            if correct_symbol is None:
+                logger.error(f"Symbol {self.symbol} not found in broker")
+                logger.error("Please check your broker's symbol list or update symbol in settings.ini")
+                return False
+            
+            # อัพเดท symbol ที่ใช้งาน
+            if correct_symbol != self.symbol:
+                logger.info(f"Symbol updated: {self.symbol} → {correct_symbol}")
+                self.symbol = correct_symbol
+            
+            # ตรวจสอบข้อมูล symbol
             symbol_info = mt5.symbol_info(self.symbol)
             if symbol_info is None:
-                logger.error(f"Symbol {self.symbol} not found")
+                logger.error(f"Cannot get symbol info for {self.symbol}")
                 return False
             
             # เปิด symbol สำหรับการเทรด
@@ -133,7 +196,7 @@ class MT5Connection:
             # ปรับ volume ให้ถูกต้องตาม step
             volume = round(volume / symbol_info.volume_step) * symbol_info.volume_step
             
-            # สร้าง request
+            # สร้าง request (ไม่กำหนด type_filling ให้โบรกเลือกเอง)
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": self.symbol,
@@ -144,7 +207,6 @@ class MT5Connection:
                 "magic": self.magic_number,
                 "comment": comment,
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
             }
             
             # เพิ่ม SL/TP ถ้ามี
@@ -238,7 +300,7 @@ class MT5Connection:
                 trade_type = mt5.ORDER_TYPE_BUY
                 price = mt5.symbol_info_tick(self.symbol).ask
             
-            # สร้าง request
+            # สร้าง request (ไม่กำหนด type_filling ให้โบรกเลือกเอง)
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": self.symbol,
@@ -250,7 +312,6 @@ class MT5Connection:
                 "magic": self.magic_number,
                 "comment": f"Close {position.comment}",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
             }
             
             result = mt5.order_send(request)

@@ -75,8 +75,8 @@ class GridManager:
             if level_key in self.placed_orders:
                 continue
             
-            # คำนวณ TP
-            tp_distance = config.pips_to_price(config.grid.take_profit)
+            # คำนวณ TP (ใช้ระยะเท่ากับ Grid Distance)
+            tp_distance = config.pips_to_price(config.grid.grid_distance)
             if level['type'] == 'buy':
                 tp_price = level['price'] + tp_distance
             else:
@@ -181,6 +181,55 @@ class GridManager:
         # ตรวจสอบ TP
         self.monitor_grid_tp()
     
+    def restore_existing_positions(self):
+        """
+        จดจำ Grid positions ที่มีอยู่แล้วใน MT5 (ผ่าน magic number)
+        เพื่อให้สามารถเปิดโปรแกรมใหม่ได้โดยไม่สูญเสียข้อมูล
+        """
+        logger.info("Restoring existing Grid positions...")
+        
+        # อัพเดท positions
+        position_monitor.update_all_positions()
+        
+        # ดึง Grid positions ที่มีอยู่
+        grid_positions = position_monitor.grid_positions
+        
+        if not grid_positions:
+            logger.info("No existing Grid positions found")
+            return
+        
+        # จดจำ Grid positions ที่มีอยู่
+        restored_count = 0
+        for pos in grid_positions:
+            # ดึง level_key จาก comment
+            comment = pos['comment']
+            if config.mt5.comment_grid in comment:
+                # แยก level_key จาก comment (format: "GridBot_buy_-1")
+                parts = comment.split('_')
+                if len(parts) >= 3:
+                    order_type = parts[1]  # buy หรือ sell
+                    level = parts[2]  # -1, -2, 1, 2, etc.
+                    level_key = f"{order_type}_{level}"
+                    
+                    # บันทึกลง placed_orders
+                    self.placed_orders[level_key] = pos['ticket']
+                    
+                    # เพิ่มลง grid_levels
+                    self.grid_levels.append({
+                        'level_key': level_key,
+                        'price': pos['open_price'],
+                        'type': order_type,
+                        'tp': pos['tp'],
+                        'placed': True,
+                        'ticket': pos['ticket']
+                    })
+                    
+                    restored_count += 1
+                    logger.info(f"Restored Grid: {level_key} | Ticket: {pos['ticket']} | Price: {pos['open_price']:.2f}")
+        
+        logger.info(f"✓ Restored {restored_count} Grid positions")
+        return restored_count
+    
     def start_grid_trading(self):
         """
         เริ่มต้นระบบ Grid Trading
@@ -193,12 +242,15 @@ class GridManager:
         self.start_price = price_info['bid']
         self.active = True
         
+        # จดจำ Grid positions ที่มีอยู่แล้ว (ถ้ามี)
+        self.restore_existing_positions()
+        
         # วาง Grid levels เริ่มต้น
         self.place_grid_orders(self.start_price)
         
         logger.info(f"Grid Trading started at {self.start_price:.2f}")
         logger.info(f"Direction: {config.grid.direction}, Distance: {config.grid.grid_distance} pips")
-        logger.info(f"Lot Size: {config.grid.lot_size}, TP: {config.grid.take_profit} pips")
+        logger.info(f"Lot Size: {config.grid.lot_size}, TP: {config.grid.grid_distance} pips (same as grid distance)")
         
         return True
     

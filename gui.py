@@ -43,21 +43,44 @@ class TradingGUI:
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # ============ Connection Status ============
-        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection Status", padding="10")
+        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="10")
         status_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
+        # Row 0: Connection Status
         self.connection_status = tk.StringVar(value="Disconnected")
         self.connection_color = tk.StringVar(value="red")
         
         ttk.Label(status_frame, text="Status:").grid(row=0, column=0, sticky=tk.W)
-        status_label = ttk.Label(status_frame, textvariable=self.connection_status, 
+        self.status_label = ttk.Label(status_frame, textvariable=self.connection_status, 
                                 foreground="red", font=("Arial", 10, "bold"))
-        status_label.grid(row=0, column=1, sticky=tk.W, padx=5)
+        self.status_label.grid(row=0, column=1, sticky=tk.W, padx=5)
         
         ttk.Button(status_frame, text="Connect MT5", 
                   command=self.connect_mt5).grid(row=0, column=2, padx=5)
         ttk.Button(status_frame, text="Disconnect", 
                   command=self.disconnect_mt5).grid(row=0, column=3, padx=5)
+        
+        # Row 1: Account Info
+        ttk.Label(status_frame, text="Account:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        self.account_number_var = tk.StringVar(value="-")
+        ttk.Label(status_frame, textvariable=self.account_number_var, 
+                 font=("Arial", 9)).grid(row=1, column=1, sticky=tk.W, padx=5, pady=(5, 0))
+        
+        ttk.Label(status_frame, text="Balance:").grid(row=1, column=2, sticky=tk.W, pady=(5, 0))
+        self.balance_var = tk.StringVar(value="-")
+        ttk.Label(status_frame, textvariable=self.balance_var, 
+                 font=("Arial", 9, "bold")).grid(row=1, column=3, sticky=tk.W, padx=5, pady=(5, 0))
+        
+        # Row 2: Broker & Symbol
+        ttk.Label(status_frame, text="Broker:").grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        self.broker_var = tk.StringVar(value="-")
+        ttk.Label(status_frame, textvariable=self.broker_var, 
+                 font=("Arial", 9)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=(2, 0))
+        
+        ttk.Label(status_frame, text="Symbol:").grid(row=2, column=2, sticky=tk.W, pady=(2, 0))
+        self.symbol_var = tk.StringVar(value="-")
+        ttk.Label(status_frame, textvariable=self.symbol_var, 
+                 font=("Arial", 9, "bold"), foreground="blue").grid(row=2, column=3, sticky=tk.W, padx=5, pady=(2, 0))
         
         # ============ Grid Settings ============
         grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings", padding="10")
@@ -227,13 +250,34 @@ class TradingGUI:
         
         if mt5_connection.connect_to_mt5():
             self.connection_status.set("Connected ✓")
-            self.log_message("✓ Connected to MT5 successfully")
+            self.status_label.configure(foreground="green")
             
-            # เปลี่ยนสีสถานะ
-            for widget in self.root.winfo_children():
-                self._update_label_color(widget, "green")
+            # ดึงข้อมูล account
+            account_info = mt5_connection.get_account_info()
+            if account_info:
+                # แสดง account number
+                import MetaTrader5 as mt5
+                account = mt5.account_info()
+                self.account_number_var.set(str(account.login))
+                
+                # แสดง balance
+                self.balance_var.set(f"${account_info['balance']:,.2f}")
+                
+                # แสดง broker (server name)
+                self.broker_var.set(account.server if account.server else "Unknown")
+                
+                # แสดง symbol ที่ใช้งาน
+                self.symbol_var.set(mt5_connection.symbol)
+                
+                self.log_message("✓ Connected to MT5 successfully")
+                self.log_message(f"  Account: {account.login} | Broker: {account.server}")
+                self.log_message(f"  Balance: ${account_info['balance']:,.2f} | Symbol: {mt5_connection.symbol}")
+            else:
+                self.log_message("✓ Connected to MT5 (cannot retrieve account info)")
+                
         else:
             self.connection_status.set("Connection Failed ✗")
+            self.status_label.configure(foreground="red")
             self.log_message("✗ Failed to connect to MT5")
             messagebox.showerror("Connection Error", "Cannot connect to MT5. Please check if MT5 is running.")
     
@@ -252,6 +296,14 @@ class TradingGUI:
         
         mt5_connection.disconnect()
         self.connection_status.set("Disconnected")
+        self.status_label.configure(foreground="red")
+        
+        # รีเซ็ตข้อมูล account
+        self.account_number_var.set("-")
+        self.balance_var.set("-")
+        self.broker_var.set("-")
+        self.symbol_var.set("-")
+        
         self.log_message("Disconnected from MT5")
     
     def save_settings(self):
@@ -415,6 +467,12 @@ class TradingGUI:
     def update_display(self):
         """อัพเดทการแสดงผลใน GUI"""
         try:
+            # อัพเดท Account Balance (real-time)
+            if mt5_connection.connected:
+                account_info = mt5_connection.get_account_info()
+                if account_info:
+                    self.balance_var.set(f"${account_info['balance']:,.2f}")
+            
             # อัพเดท Grid status
             grid_status = grid_manager.get_grid_status()
             self.grid_levels_var.set(f"{grid_status['active_levels']} levels")

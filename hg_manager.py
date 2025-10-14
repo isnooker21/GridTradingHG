@@ -212,6 +212,59 @@ class HGManager:
         # ติดตามกำไรและตั้ง breakeven
         self.monitor_hg_profit()
     
+    def restore_existing_hg_positions(self):
+        """
+        จดจำ HG positions ที่มีอยู่แล้วใน MT5 (ผ่าน magic number)
+        เพื่อให้สามารถเปิดโปรแกรมใหม่ได้โดยไม่สูญเสียข้อมูล
+        """
+        logger.info("Restoring existing HG positions...")
+        
+        # อัพเดท positions
+        position_monitor.update_all_positions()
+        
+        # ดึง HG positions ที่มีอยู่
+        hg_positions = position_monitor.hg_positions
+        
+        if not hg_positions:
+            logger.info("No existing HG positions found")
+            return
+        
+        # จดจำ HG positions ที่มีอยู่
+        restored_count = 0
+        for pos in hg_positions:
+            # ดึง level_key จาก comment
+            comment = pos['comment']
+            if config.mt5.comment_hg in comment:
+                # แยก level_key จาก comment (format: "HG_HG_BUY_1" หรือ "HG_HG_SELL_2")
+                parts = comment.split('_')
+                if len(parts) >= 3:
+                    # level_key = "HG_BUY_1" หรือ "HG_SELL_2"
+                    level_key = '_'.join(parts[1:])  # เอาตั้งแต่ส่วนที่ 2 เป็นต้นไป
+                    
+                    # ตรวจสอบว่ามี SL ตั้งไว้หรือไม่ (เพื่อดู breakeven_set)
+                    breakeven_set = (pos['sl'] != 0.0)
+                    
+                    # แยก type และ level
+                    order_type = parts[2].lower() if len(parts) >= 3 else 'buy'  # buy หรือ sell
+                    level_num = int(parts[3]) if len(parts) >= 4 else 1
+                    
+                    # บันทึกลง placed_hg
+                    self.placed_hg[level_key] = {
+                        'ticket': pos['ticket'],
+                        'open_price': pos['open_price'],
+                        'type': order_type,
+                        'lot': pos['volume'],
+                        'breakeven_set': breakeven_set,
+                        'level': level_num if order_type == 'sell' else -level_num
+                    }
+                    
+                    restored_count += 1
+                    be_status = "✓ Breakeven" if breakeven_set else "⏳ Monitoring"
+                    logger.info(f"Restored HG: {level_key} | Ticket: {pos['ticket']} | Price: {pos['open_price']:.2f} | {be_status}")
+        
+        logger.info(f"✓ Restored {restored_count} HG positions")
+        return restored_count
+    
     def start_hg_system(self, start_price: float):
         """
         เริ่มต้นระบบ HG
@@ -221,6 +274,9 @@ class HGManager:
         """
         self.start_price = start_price
         self.active = True
+        
+        # จดจำ HG positions ที่มีอยู่แล้ว (ถ้ามี)
+        self.restore_existing_hg_positions()
         
         logger.info(f"HG System started at {self.start_price:.2f}")
         logger.info(f"HG Distance: {config.hg.hg_distance} pips")
