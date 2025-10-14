@@ -19,42 +19,6 @@ class GridManager:
         self.grid_levels = []  # เก็บระดับราคา Grid ที่วางไว้
         self.placed_orders = {}  # เก็บ ticket และข้อมูล orders ที่วางไว้
         self.start_price = 0.0
-        
-    def calculate_grid_levels(self, current_price: float, num_levels: int = 10) -> List[float]:
-        """
-        คำนวณตำแหน่ง Grid levels
-        
-        Args:
-            current_price: ราคาปัจจุบัน
-            num_levels: จำนวน levels ที่ต้องการคำนวณ (แต่ละด้าน)
-            
-        Returns:
-            List ของราคา Grid levels
-        """
-        levels = []
-        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
-        
-        if config.grid.direction in ['buy', 'both']:
-            # คำนวณ levels ด้านล่าง (Buy)
-            for i in range(1, num_levels + 1):
-                level_price = current_price - (grid_distance_price * i)
-                levels.append({
-                    'price': level_price,
-                    'type': 'buy',
-                    'level': -i
-                })
-        
-        if config.grid.direction in ['sell', 'both']:
-            # คำนวณ levels ด้านบน (Sell)
-            for i in range(1, num_levels + 1):
-                level_price = current_price + (grid_distance_price * i)
-                levels.append({
-                    'price': level_price,
-                    'type': 'sell',
-                    'level': i
-                })
-        
-        return levels
     
     def place_initial_orders(self, current_price: float):
         """
@@ -150,49 +114,27 @@ class GridManager:
                 if grid['level_key'] in self.placed_orders:
                     del self.placed_orders[grid['level_key']]
                 
-                # วาง Grid ใหม่
-                self.place_new_grid_when_price_moves()
+                # วางไม้ใหม่ทันที (ไม่รอให้ราคาเคลื่อนไหว)
+                self.place_new_order_immediately(grid['type'])
     
-    def place_new_grid_when_price_moves(self):
+    def place_new_order_immediately(self, order_type: str):
         """
-        วาง Grid ใหม่เมื่อราคาเคลื่อนไหวตามระยะที่ตั้งไว้
-        """
-        if not self.active:
-            return
+        วางไม้ใหม่ทันทีเมื่อไม้เก่า TP (ไม่รอให้ราคาเคลื่อนไหว)
         
+        Args:
+            order_type: buy หรือ sell
+        """
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
         if not price_info:
             return
         
         current_price = price_info['bid']
-        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
         
-        # ตรวจสอบว่าต้องวาง Buy ใหม่หรือไม่
-        if config.grid.direction in ['buy', 'both']:
-            # หา Buy position ที่ต่ำสุด
-            lowest_buy_price = None
-            for grid in self.grid_levels:
-                if grid['type'] == 'buy' and grid['placed']:
-                    if lowest_buy_price is None or grid['price'] < lowest_buy_price:
-                        lowest_buy_price = grid['price']
-            
-            # ถ้าราคาลงมากกว่า Grid Distance จาก Buy ต่ำสุด
-            if lowest_buy_price and current_price <= (lowest_buy_price - grid_distance_price):
-                self.place_new_buy_order(current_price)
-        
-        # ตรวจสอบว่าต้องวาง Sell ใหม่หรือไม่
-        if config.grid.direction in ['sell', 'both']:
-            # หา Sell position ที่สูงสุด
-            highest_sell_price = None
-            for grid in self.grid_levels:
-                if grid['type'] == 'sell' and grid['placed']:
-                    if highest_sell_price is None or grid['price'] > highest_sell_price:
-                        highest_sell_price = grid['price']
-            
-            # ถ้าราคาขึ้นมากกว่า Grid Distance จาก Sell สูงสุด
-            if highest_sell_price and current_price >= (highest_sell_price + grid_distance_price):
-                self.place_new_sell_order(current_price)
+        if order_type == 'buy':
+            self.place_new_buy_order(current_price)
+        else:
+            self.place_new_sell_order(current_price)
     
     def place_new_buy_order(self, current_price: float):
         """

@@ -489,8 +489,8 @@ class TradingGUI:
                 # อัพเดท GUI
                 self.root.after(0, self.update_display)
                 
-                # รอ 1 วินาที
-                threading.Event().wait(1.0)
+                # รอ 0.5 วินาที (เร็วขึ้น)
+                threading.Event().wait(0.5)
                 
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
