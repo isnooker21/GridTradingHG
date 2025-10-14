@@ -1,0 +1,15 @@
+# Requirements for Grid Trading System with HG
+# Python 3.8+ required
+
+# MetaTrader 5 Integration
+MetaTrader5>=5.0.45
+
+# GUI
+# tkinter (usually comes with Python, no need to install)
+
+# Note: tkinter comes pre-installed with Python on most systems
+# If tkinter is not available, install it using your system package manager:
+# - Ubuntu/Debian: sudo apt-get install python3-tk
+# - macOS: tkinter comes with Python from python.org
+# - Windows: tkinter comes with Python installer
+
