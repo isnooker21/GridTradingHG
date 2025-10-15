@@ -18,6 +18,7 @@ class HGManager:
         self.active = False
         self.hg_levels = []  # เก็บข้อมูล HG levels
         self.placed_hg = {}  # เก็บ HG positions ที่เปิดอยู่
+        self.closed_hg_levels = set()  # เก็บ HG levels ที่ถูกปิดแล้ว (SL/TP)
         self.start_price = 0.0
         
     def check_hg_trigger(self, current_price: float) -> List[Dict]:
@@ -40,7 +41,9 @@ class HGManager:
                 level_price_buy = self.start_price - (hg_distance_price * i)
                 level_key_buy = f"HG_BUY_{i}"
                 
-                if current_price <= level_price_buy and level_key_buy not in self.placed_hg:
+                if (current_price <= level_price_buy and 
+                    level_key_buy not in self.placed_hg and 
+                    level_key_buy not in self.closed_hg_levels):
                     logger.info(f"HG Trigger detected: {level_key_buy} | Target: {level_price_buy:.2f} | Current: {current_price:.2f}")
                     triggers.append({
                         'level_key': level_key_buy,
@@ -54,7 +57,9 @@ class HGManager:
                 level_price_sell = self.start_price + (hg_distance_price * i)
                 level_key_sell = f"HG_SELL_{i}"
                 
-                if current_price >= level_price_sell and level_key_sell not in self.placed_hg:
+                if (current_price >= level_price_sell and 
+                    level_key_sell not in self.placed_hg and 
+                    level_key_sell not in self.closed_hg_levels):
                     logger.info(f"HG Trigger detected: {level_key_sell} | Target: {level_price_sell:.2f} | Current: {current_price:.2f}")
                     triggers.append({
                         'level_key': level_key_sell,
@@ -64,6 +69,32 @@ class HGManager:
                     })
         
         return triggers
+    
+    def update_hg_start_price_if_needed(self, current_price: float):
+        """
+        อัพเดท start_price เมื่อราคาเคลื่อนไหวไกลจากจุดเริ่มต้น
+        เพื่อให้ระบบ HG ยังวางได้เมื่อราคาเคลื่อนไหวไปเรื่อยๆ
+        """
+        if not self.active or not config.hg.enabled:
+            return
+        
+        hg_distance_price = config.pips_to_price(config.hg.hg_distance)
+        distance_from_start = abs(current_price - self.start_price)
+        
+        # ถ้าราคาเคลื่อนไหวไกลเกิน 2 เท่าของ HG Distance
+        if distance_from_start >= (hg_distance_price * 2):
+            # อัพเดท start_price เป็นราคาปัจจุบัน
+            old_start_price = self.start_price
+            self.start_price = current_price
+            
+            logger.info(f"HG Start Price updated: {old_start_price:.2f} → {self.start_price:.2f}")
+            logger.info(f"Distance moved: {config.price_to_pips(distance_from_start):.0f} pips")
+            
+            # ล้าง HG positions ที่วางไว้แล้ว (เพื่อให้วางใหม่ได้)
+            self.placed_hg = {}
+            # ล้าง closed_hg_levels ด้วย (เพื่อให้วางใหม่ได้)
+            self.closed_hg_levels = set()
+            logger.info("HG positions cleared - will place new HG levels")
     
     def calculate_hg_lot(self) -> float:
         """
@@ -146,8 +177,10 @@ class HGManager:
             pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
             
             if pos is None:
-                # Position ถูกปิดแล้ว
+                # Position ถูกปิดแล้ว (SL/TP)
                 logger.info(f"HG closed: {level_key}")
+                # เพิ่มลง closed_hg_levels เพื่อไม่ให้วางซ้ำ
+                self.closed_hg_levels.add(level_key)
                 continue
             
             # ตรวจสอบว่าตั้ง breakeven แล้วหรือยัง
@@ -210,6 +243,9 @@ class HGManager:
             return
         
         current_price = price_info['bid']
+        
+        # อัพเดท start_price เมื่อราคาเคลื่อนไหวไกล
+        self.update_hg_start_price_if_needed(current_price)
         
         # ตรวจสอบว่ามี HG ที่ต้องวางหรือไม่
         triggers = self.check_hg_trigger(current_price)
