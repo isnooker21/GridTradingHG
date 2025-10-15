@@ -23,7 +23,7 @@ class TradingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Grid Trading System with HG - XAUUSD")
-        self.root.geometry("900x700")
+        self.root.geometry("1000x800")
         
         self.api_base_url ="http://123.253.62.50:8080/api"
 
