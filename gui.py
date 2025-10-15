@@ -410,28 +410,31 @@ class TradingGUI:
                 logger.error("MT5 initialize failed")
                 return
             
-            # ดึงรายการบัญชี
-            accounts = mt5.accounts_get()
-            if accounts is None:
-                logger.warning("No accounts found")
+            # ดึงข้อมูลบัญชีปัจจุบัน
+            account = mt5.account_info()
+            if account is None:
+                logger.warning("No account info available")
                 account_list = ["Auto"]
             else:
                 account_list = ["Auto"]  # เพิ่ม Auto เป็นตัวเลือกแรก
-                for account in accounts:
-                    account_info = f"{account.login} - {account.server}"
-                    account_list.append(account_info)
+                # เพิ่มบัญชีปัจจุบัน
+                current_account = f"{account.login} - {account.server}"
+                account_list.append(current_account)
             
             # อัพเดท combobox
             self.account_combo['values'] = account_list
             if not self.account_var.get() or self.account_var.get() not in account_list:
                 self.account_var.set("Auto")
             
-            logger.info(f"Found {len(account_list)-1} MT5 accounts")
-            self.log_message(f"✓ Found {len(account_list)-1} MT5 accounts")
+            logger.info(f"Found current MT5 account: {account.login}")
+            self.log_message(f"✓ Found current MT5 account: {account.login}")
             
         except Exception as e:
             logger.error(f"Error refreshing accounts: {e}")
             self.log_message(f"✗ Error refreshing accounts: {e}")
+            # ตั้งค่า default
+            self.account_combo['values'] = ["Auto"]
+            self.account_var.set("Auto")
     
     def start_trading(self):
         """เริ่มต้นระบบเทรด"""
