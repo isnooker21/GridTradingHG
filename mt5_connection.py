@@ -396,7 +396,12 @@ class MT5Connection:
                 return None
             
             return {
+                'login': account.login,
+                'name': account.name,
+                'company': account.company,
                 'balance': account.balance,
+                'profit': account.profit,
+                'currency': account.currency,
                 'equity': account.equity,
                 'margin': account.margin,
                 'free_margin': account.margin_free,

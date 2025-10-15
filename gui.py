@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox, scrolledtext
 import threading
 import logging
 from datetime import datetime
+from time import timezone
 from mt5_connection import mt5_connection
 from grid_manager import grid_manager
 from hg_manager import hg_manager
@@ -24,6 +25,8 @@ class TradingGUI:
         self.root.title("Grid Trading System with HG - XAUUSD")
         self.root.geometry("900x700")
         
+        self.api_base_url ="http://123.253.62.50:8080/api"
+
         # สถานะระบบ
         self.is_running = False
         self.monitoring_thread = None
@@ -436,6 +439,67 @@ class TradingGUI:
             self.account_combo['values'] = ["Auto"]
             self.account_var.set("Auto")
     
+    def should_report_status(self):
+        """Check if it's time to report status"""
+        if hasattr(self, 'next_report_time') and self.next_report_time:
+            current_utc = datetime.now(timezone.utc)
+            next_report_utc = self.next_report_time.astimezone(timezone.utc)
+            
+            return current_utc >= next_report_utc
+        return True  # Report if no scheduled time
+
+    def report_status(self):
+        """Report the current status to the API"""
+
+        try:
+            account_info = mt5_connection.get_account_info()
+        except Exception as e:
+            raise Exception(f"Failed to get account data: {str(e)}")
+        
+        status_response = requests.post(
+            f"{self.api_base_url}/customer-clients/status",
+            json={
+                "tradingAccountId": str(account_info['login']),
+                "name": account_info['name'],
+                "brokerName": account_info['company'],
+                "currentBalance":  str(account_info['balance']),
+                "currentProfit": str(account_info['profit']),
+                "currency": account_info['currency'],
+                "botName": "Grid Trading AI",
+                "botVersion": "0.0.1"
+            },
+            timeout=10
+        )
+        
+        if status_response.status_code == 200:
+            response_data = status_response.json()
+            
+            # Check if trading is inactive
+            if response_data.get("processedStatus") == "inactive":
+                message = response_data.get("message", "Trading is inactive")
+                raise Exception(f"Trading is inactive. {message}")
+            
+            # Store next report time for scheduling
+            next_report_time = response_data.get("nextReportTime")
+            if next_report_time:
+                # Fix microseconds to 6 digits
+                if '.' in next_report_time and '+' in next_report_time:
+                    parts = next_report_time.split('.')
+                    microseconds = parts[1].split('+')[0]
+                    timezone_part = '+' + parts[1].split('+')[1]
+                    
+                    # Truncate microseconds to 6 digits
+                    if len(microseconds) > 6:
+                        microseconds = microseconds[:6]
+                    
+                    next_report_time = f"{parts[0]}.{microseconds}{timezone_part}"
+                
+                self.next_report_time = datetime.fromisoformat(next_report_time)
+                print(f"Next report scheduled for: {self.next_report_time}")
+                
+        else:
+            raise Exception(f"Failed to check status: {status_response.status_code}")
+
     def start_trading(self):
         """เริ่มต้นระบบเทรด"""
         if not mt5_connection.connected:
@@ -444,6 +508,12 @@ class TradingGUI:
         
         # บันทึกการตั้งค่าก่อนเริ่ม
         self.save_settings()
+
+        try:
+            self.report_status()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            return
         
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
@@ -560,6 +630,14 @@ class TradingGUI:
         ทำงานใน background thread
         """
         while not self.stop_monitoring and self.is_running:
+            try:
+                if self.should_report_status():
+                    self.report_status()
+            except Exception as e:
+                self.stop_trading()
+                self.log_message(f"✗ Trading stopped: {e}")
+                messagebox.showerror("Error", str(e))
+
             try:
                 # อัพเดท Grid
                 grid_manager.update_grid_status()
