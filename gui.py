@@ -34,6 +34,9 @@ class TradingGUI:
         
         # โหลดการตั้งค่า
         self.load_settings_to_gui()
+        
+        # โหลดรายการบัญชี
+        self.refresh_accounts()
     
     def create_widgets(self):
         """สร้าง GUI components ทั้งหมด"""
@@ -46,41 +49,51 @@ class TradingGUI:
         status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="10")
         status_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
-        # Row 0: Connection Status
+        # Row 0: Account Selection
+        ttk.Label(status_frame, text="Select Account:").grid(row=0, column=0, sticky=tk.W)
+        self.account_var = tk.StringVar(value="Auto")
+        self.account_combo = ttk.Combobox(status_frame, textvariable=self.account_var, 
+                                         width=20, state="readonly")
+        self.account_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
+        
+        ttk.Button(status_frame, text="Refresh Accounts", 
+                  command=self.refresh_accounts).grid(row=0, column=2, padx=5)
+        
+        # Row 1: Connection Status
         self.connection_status = tk.StringVar(value="Disconnected")
         self.connection_color = tk.StringVar(value="red")
         
-        ttk.Label(status_frame, text="Status:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(status_frame, text="Status:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
         self.status_label = ttk.Label(status_frame, textvariable=self.connection_status, 
                                 foreground="red", font=("Arial", 10, "bold"))
-        self.status_label.grid(row=0, column=1, sticky=tk.W, padx=5)
+        self.status_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=(5, 0))
         
         ttk.Button(status_frame, text="Connect MT5", 
-                  command=self.connect_mt5).grid(row=0, column=2, padx=5)
+                  command=self.connect_mt5).grid(row=1, column=2, padx=5, pady=(5, 0))
         ttk.Button(status_frame, text="Disconnect", 
-                  command=self.disconnect_mt5).grid(row=0, column=3, padx=5)
+                  command=self.disconnect_mt5).grid(row=1, column=3, padx=5, pady=(5, 0))
         
-        # Row 1: Account Info
-        ttk.Label(status_frame, text="Account:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        # Row 2: Account Info
+        ttk.Label(status_frame, text="Account:").grid(row=2, column=0, sticky=tk.W, pady=(5, 0))
         self.account_number_var = tk.StringVar(value="-")
         ttk.Label(status_frame, textvariable=self.account_number_var, 
-                 font=("Arial", 9)).grid(row=1, column=1, sticky=tk.W, padx=5, pady=(5, 0))
+                 font=("Arial", 9)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=(5, 0))
         
-        ttk.Label(status_frame, text="Balance:").grid(row=1, column=2, sticky=tk.W, pady=(5, 0))
+        ttk.Label(status_frame, text="Balance:").grid(row=2, column=2, sticky=tk.W, pady=(5, 0))
         self.balance_var = tk.StringVar(value="-")
         ttk.Label(status_frame, textvariable=self.balance_var, 
-                 font=("Arial", 9, "bold")).grid(row=1, column=3, sticky=tk.W, padx=5, pady=(5, 0))
+                 font=("Arial", 9, "bold")).grid(row=2, column=3, sticky=tk.W, padx=5, pady=(5, 0))
         
-        # Row 2: Broker & Symbol
-        ttk.Label(status_frame, text="Broker:").grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
+        # Row 3: Broker & Symbol
+        ttk.Label(status_frame, text="Broker:").grid(row=3, column=0, sticky=tk.W, pady=(2, 0))
         self.broker_var = tk.StringVar(value="-")
         ttk.Label(status_frame, textvariable=self.broker_var, 
-                 font=("Arial", 9)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=(2, 0))
+                 font=("Arial", 9)).grid(row=3, column=1, sticky=tk.W, padx=5, pady=(2, 0))
         
-        ttk.Label(status_frame, text="Symbol:").grid(row=2, column=2, sticky=tk.W, pady=(2, 0))
+        ttk.Label(status_frame, text="Symbol:").grid(row=3, column=2, sticky=tk.W, pady=(2, 0))
         self.symbol_var = tk.StringVar(value="-")
         ttk.Label(status_frame, textvariable=self.symbol_var, 
-                 font=("Arial", 9, "bold"), foreground="blue").grid(row=2, column=3, sticky=tk.W, padx=5, pady=(2, 0))
+                 font=("Arial", 9, "bold"), foreground="blue").grid(row=3, column=3, sticky=tk.W, padx=5, pady=(2, 0))
         
         # ============ Grid Settings ============
         grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings", padding="10")
@@ -273,7 +286,17 @@ class TradingGUI:
         """เชื่อมต่อกับ MT5"""
         self.log_message("Connecting to MT5...")
         
-        if mt5_connection.connect_to_mt5():
+        # ดึงบัญชีที่เลือก
+        selected_account = self.account_var.get()
+        if selected_account == "Auto":
+            account_login = None
+            self.log_message("Using Auto account selection")
+        else:
+            # แยก account login จาก "12345 - ServerName"
+            account_login = int(selected_account.split(" - ")[0])
+            self.log_message(f"Connecting to account: {account_login}")
+        
+        if mt5_connection.connect_to_mt5(login=account_login):
             self.connection_status.set("Connected ✓")
             self.status_label.configure(foreground="green")
             
@@ -376,6 +399,39 @@ class TradingGUI:
         self.sl_buffer_var.set(config.hg.sl_buffer)
         self.hg_multiplier_var.set(config.hg.hg_multiplier)
         self.max_hg_levels_var.set(config.hg.max_hg_levels)
+    
+    def refresh_accounts(self):
+        """รีเฟรชรายการบัญชี MT5 ที่มีอยู่"""
+        try:
+            import MetaTrader5 as mt5
+            
+            # เริ่มต้น MT5
+            if not mt5.initialize():
+                logger.error("MT5 initialize failed")
+                return
+            
+            # ดึงรายการบัญชี
+            accounts = mt5.accounts_get()
+            if accounts is None:
+                logger.warning("No accounts found")
+                account_list = ["Auto"]
+            else:
+                account_list = ["Auto"]  # เพิ่ม Auto เป็นตัวเลือกแรก
+                for account in accounts:
+                    account_info = f"{account.login} - {account.server}"
+                    account_list.append(account_info)
+            
+            # อัพเดท combobox
+            self.account_combo['values'] = account_list
+            if not self.account_var.get() or self.account_var.get() not in account_list:
+                self.account_var.set("Auto")
+            
+            logger.info(f"Found {len(account_list)-1} MT5 accounts")
+            self.log_message(f"✓ Found {len(account_list)-1} MT5 accounts")
+            
+        except Exception as e:
+            logger.error(f"Error refreshing accounts: {e}")
+            self.log_message(f"✗ Error refreshing accounts: {e}")
     
     def start_trading(self):
         """เริ่มต้นระบบเทรด"""
