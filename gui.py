@@ -5,8 +5,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import threading
 import logging
-from datetime import datetime
-from time import timezone
+from datetime import datetime, timezone
+
+import requests
 from mt5_connection import mt5_connection
 from grid_manager import grid_manager
 from hg_manager import hg_manager
@@ -97,7 +98,25 @@ class TradingGUI:
         self.symbol_var = tk.StringVar(value="-")
         ttk.Label(status_frame, textvariable=self.symbol_var, 
                  font=("Arial", 9, "bold"), foreground="blue").grid(row=3, column=3, sticky=tk.W, padx=5, pady=(2, 0))
-        
+
+        ttk.Label(status_frame, text="Expiry date:").grid(row=3, column=5, sticky=tk.W, pady=(2, 0))
+        self.expiry_date_var = tk.StringVar(value="-")
+        # Format expiry date to show only date part
+        def format_expiry_date(*args):
+            value = self.expiry_date_var.get()
+            if value and len(value) >= 10:
+                self.expiry_date_label.config(text=value[:10])
+            else:
+                self.expiry_date_label.config(text="-")
+
+        self.expiry_date_label = ttk.Label(
+            status_frame,
+            font=("Arial", 9, "bold"),
+            foreground="blue"
+        )
+        self.expiry_date_label.grid(row=3, column=7, sticky=tk.W, padx=5, pady=(2, 0))
+        self.expiry_date_var.trace_add("write", format_expiry_date)
+
         # ============ Grid Settings ============
         grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings", padding="10")
         grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N), pady=5, padx=(0, 5))
@@ -360,33 +379,36 @@ class TradingGUI:
     def save_settings(self):
         """บันทึกการตั้งค่า"""
         try:
-            # อัพเดทค่าใน config
-            config.update_grid_settings(
-                grid_distance=self.grid_distance_var.get(),
-                direction=self.direction_var.get(),
-                lot_size=self.lot_size_var.get(),
-                take_profit=self.tp_var.get()
-            )
-            
-            config.update_hg_settings(
-                enabled=self.hg_enabled_var.get(),
-                direction=self.hg_direction_var.get(),
-                hg_distance=self.hg_distance_var.get(),
-                hg_sl_trigger=self.hg_sl_trigger_var.get(),
-                sl_buffer=self.sl_buffer_var.get(),
-                hg_multiplier=self.hg_multiplier_var.get(),
-                max_hg_levels=self.max_hg_levels_var.get()
-            )
-            
-            # บันทึกลงไฟล์
-            config.save_to_file()
-            
+            self._save_settings()
             self.log_message("✓ Settings saved")
             messagebox.showinfo("Success", "Settings saved successfully!")
             
         except Exception as e:
             self.log_message(f"✗ Error saving settings: {e}")
             messagebox.showerror("Error", f"Failed to save settings: {e}")
+
+    def _save_settings(self):
+        """บันทึกการตั้งค่า (internal)"""
+        # อัพเดทค่าใน config
+        config.update_grid_settings(
+            grid_distance=self.grid_distance_var.get(),
+            direction=self.direction_var.get(),
+            lot_size=self.lot_size_var.get(),
+            take_profit=self.tp_var.get()
+        )
+        
+        config.update_hg_settings(
+            enabled=self.hg_enabled_var.get(),
+            direction=self.hg_direction_var.get(),
+            hg_distance=self.hg_distance_var.get(),
+            hg_sl_trigger=self.hg_sl_trigger_var.get(),
+            sl_buffer=self.sl_buffer_var.get(),
+            hg_multiplier=self.hg_multiplier_var.get(),
+            max_hg_levels=self.max_hg_levels_var.get()
+        )
+        
+        # บันทึกลงไฟล์
+        config.save_to_file()
     
     def load_settings_to_gui(self):
         """โหลดการตั้งค่าจาก config มาแสดงใน GUI"""
@@ -474,11 +496,17 @@ class TradingGUI:
         if status_response.status_code == 200:
             response_data = status_response.json()
             
+            expiry_date_var = response_data.get("expiryDate")
+            if expiry_date_var:
+                self.expiry_date_var.set(expiry_date_var)
+            else:
+                self.expiry_date_var.set("-")
+
             # Check if trading is inactive
             if response_data.get("processedStatus") == "inactive":
-                message = response_data.get("message", "Trading is inactive")
-                raise Exception(f"Trading is inactive. {message}")
-            
+                # message = response_data.get("message", "Unknown reason")
+                raise Exception(f"ไม่สามารถเริ่มระบบเทรดได้: หมดอายุไอฟาย ^^")
+                
             # Store next report time for scheduling
             next_report_time = response_data.get("nextReportTime")
             if next_report_time:
@@ -507,7 +535,7 @@ class TradingGUI:
             return
         
         # บันทึกการตั้งค่าก่อนเริ่ม
-        self.save_settings()
+        self._save_settings()
 
         try:
             self.report_status()
@@ -558,11 +586,13 @@ class TradingGUI:
     
     def stop_trading(self):
         """หยุดระบบเทรด"""
-        response = messagebox.askyesno("Confirm", 
-                                       "Stop trading?\n\nPositions will remain open.\nUse Emergency Stop to close all positions.")
+        response = messagebox.askyesno("Confirm", "Stop trading?")
         if not response:
             return
         
+        self._stop_trading_internal()
+
+    def _stop_trading_internal(self):
         self.is_running = False
         self.stop_monitoring = True
         
@@ -634,7 +664,7 @@ class TradingGUI:
                 if self.should_report_status():
                     self.report_status()
             except Exception as e:
-                self.stop_trading()
+                self._stop_trading_internal()
                 self.log_message(f"✗ Trading stopped: {e}")
                 messagebox.showerror("Error", str(e))
 

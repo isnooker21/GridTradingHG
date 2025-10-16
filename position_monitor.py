@@ -162,17 +162,17 @@ class PositionMonitor:
         warnings = []
         
         # ตรวจสอบ margin
-        margin_info = self.check_margin_usage()
-        if margin_info['status'] == 'warning':
-            warnings.append(f"⚠️ Margin Usage: {margin_info['margin_percent']:.1f}% (เกิน {config.risk.max_margin_usage}%)")
+        # margin_info = self.check_margin_usage()
+        # if margin_info['status'] == 'warning':
+        #     warnings.append(f"⚠️ Margin Usage: {margin_info['margin_percent']:.1f}% (เกิน {config.risk.max_margin_usage}%)")
         
         # ตรวจสอบ drawdown (ปิดการแจ้งเตือน)
         # if self.total_pnl < -config.risk.max_drawdown:
         #     warnings.append(f"⚠️ Drawdown: ${abs(self.total_pnl):.2f} (เกิน ${config.risk.max_drawdown})")
         
         # ตรวจสอบจำนวน positions
-        if len(self.positions) > 50:
-            warnings.append(f"⚠️ Positions: {len(self.positions)} positions (มากเกินไป)")
+        # if len(self.positions) > 50:
+        #     warnings.append(f"⚠️ Positions: {len(self.positions)} positions (มากเกินไป)")
         
         return warnings
     
