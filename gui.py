@@ -13,6 +13,7 @@ from grid_manager import grid_manager
 from hg_manager import hg_manager
 from position_monitor import position_monitor
 from config import config
+from risk_calculator import risk_calculator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,8 +46,26 @@ class TradingGUI:
     def create_widgets(self):
         """สร้าง GUI components ทั้งหมด"""
         
+        # ============ Notebook (Tabs) ============
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # สร้าง tabs
+        self.trading_tab = ttk.Frame(self.notebook)
+        self.risk_tab = ttk.Frame(self.notebook)
+        
+        self.notebook.add(self.trading_tab, text="  📊 Trading  ")
+        self.notebook.add(self.risk_tab, text="  🛡️ Risk Calculator  ")
+        
+        # สร้าง content ใน tabs
+        self.create_trading_tab()
+        self.create_risk_calculator_tab()
+    
+    def create_trading_tab(self):
+        """สร้าง content สำหรับ Trading Tab"""
+        
         # ============ Frame หลัก ============
-        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame = ttk.Frame(self.trading_tab, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # ============ Connection Status ============
@@ -124,7 +143,9 @@ class TradingGUI:
         # Grid Distance
         ttk.Label(grid_frame, text="Grid Distance (pips):").grid(row=0, column=0, sticky=tk.W, pady=3)
         self.grid_distance_var = tk.IntVar(value=200)
-        ttk.Entry(grid_frame, textvariable=self.grid_distance_var, width=15).grid(row=0, column=1, pady=3)
+        entry_grid = ttk.Entry(grid_frame, textvariable=self.grid_distance_var, width=15)
+        entry_grid.grid(row=0, column=1, pady=3)
+        ttk.Label(grid_frame, text="(ระยะห่างวางไม้)", font=("Arial", 8), foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=5)
         
         # Direction
         ttk.Label(grid_frame, text="Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
@@ -151,7 +172,9 @@ class TradingGUI:
         # Take Profit
         ttk.Label(grid_frame, text="Take Profit (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
         self.tp_var = tk.IntVar(value=100)
-        ttk.Entry(grid_frame, textvariable=self.tp_var, width=15).grid(row=3, column=1, pady=3)
+        entry_tp = ttk.Entry(grid_frame, textvariable=self.tp_var, width=15)
+        entry_tp.grid(row=3, column=1, pady=3)
+        ttk.Label(grid_frame, text="(ระยะ TP แต่ละไม้)", font=("Arial", 8), foreground="gray").grid(row=3, column=2, sticky=tk.W, padx=5)
         
         # ============ HG Settings ============
         hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings", padding="10")
@@ -274,8 +297,8 @@ class TradingGUI:
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
         # ตั้งค่า grid weights สำหรับ responsive
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        self.trading_tab.columnconfigure(0, weight=1)
+        self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(3, weight=1)
@@ -285,6 +308,179 @@ class TradingGUI:
         style = ttk.Style()
         style.configure("Start.TButton", foreground="green")
         style.configure("Emergency.TButton", foreground="red")
+    
+    def create_risk_calculator_tab(self):
+        """สร้าง content สำหรับ Risk Calculator Tab"""
+        
+        # ============ Frame หลัก ============
+        main_frame = ttk.Frame(self.risk_tab, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # ============ Title ============
+        title_label = ttk.Label(main_frame, text="🛡️ Risk Calculator", 
+                               font=("Arial", 16, "bold"))
+        title_label.pack(pady=10)
+        
+        desc_label = ttk.Label(main_frame, 
+                              text="คำนวณว่าระบบจะทนได้กี่ pips ก่อน Margin Call ตาม Settings ปัจจุบัน",
+                              font=("Arial", 9), foreground="gray")
+        desc_label.pack(pady=5)
+        
+        # ============ Info Frame ============
+        info_frame = ttk.LabelFrame(main_frame, text="ℹ️ Information", padding="15")
+        info_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        info_text = ttk.Label(info_frame, 
+                             text="✨ Auto Calculate: ระบบจะคำนวณอัตโนมัติเมื่อเปิด Tab หรือ Save Settings\n" +
+                                  "📊 ใช้ข้อมูลจาก MT5 โดยตรง (Balance, Price, Leverage)\n" +
+                                  "🔄 กด Refresh เพื่อคำนวณใหม่ด้วยตนเอง",
+                             foreground="gray", justify=tk.LEFT)
+        info_text.pack(pady=5)
+        
+        # Refresh Button
+        refresh_button = ttk.Button(info_frame, text="🔄 Refresh Risk Analysis", 
+                                command=self.calculate_risk_analysis, style="Start.TButton")
+        refresh_button.pack(pady=10)
+        
+        # ============ Results Frame ============
+        results_frame = ttk.LabelFrame(main_frame, text="📊 Risk Analysis Results", padding="15")
+        results_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # สร้าง ScrolledText สำหรับแสดงผล
+        self.risk_result_text = scrolledtext.ScrolledText(results_frame, height=25, width=90, 
+                                                          wrap=tk.WORD, font=("Consolas", 10))
+        self.risk_result_text.pack(fill=tk.BOTH, expand=True)
+        
+        # แสดงข้อความเริ่มต้น
+        self.risk_result_text.insert(tk.END, "⏳ กำลังเตรียมข้อมูล...\n\n")
+        self.risk_result_text.insert(tk.END, "กรุณารอสักครู่...\n")
+        self.risk_result_text.config(state=tk.DISABLED)
+        
+        # Auto calculate หลังจากสร้าง UI เสร็จ (ใช้ after เพื่อรอให้ UI render เสร็จก่อน)
+        self.root.after(500, self.auto_calculate_risk)
+    
+    def update_risk_calculator_display(self):
+        """อัพเดทค่าที่แสดงใน Risk Calculator หลัง Save Settings"""
+        # Auto calculate ใหม่ทันที
+        self.auto_calculate_risk()
+    
+    def auto_calculate_risk(self):
+        """คำนวณ Risk Analysis อัตโนมัติ"""
+        try:
+            # เช็คว่า Risk Calculator tab ถูกสร้างแล้วหรือยัง
+            if not hasattr(self, 'risk_result_text'):
+                return
+            
+            self.calculate_risk_analysis()
+        except Exception as e:
+            logger.error(f"Auto calculate risk error: {e}")
+    
+    def calculate_risk_analysis(self):
+        """คำนวณ Risk Analysis"""
+        try:
+            # Auto ใช้ข้อมูลจาก MT5 โดยตรง
+            balance = None
+            price = None
+            leverage = 100  # default
+            
+            # คำนวณ
+            self.risk_result_text.config(state=tk.NORMAL)
+            self.risk_result_text.delete(1.0, tk.END)
+            self.risk_result_text.insert(tk.END, "⏳ กำลังคำนวณ...\n")
+            self.risk_result_text.update()
+            
+            result = risk_calculator.calculate_risk(balance, price, leverage)
+            
+            # แสดงผล
+            self.risk_result_text.delete(1.0, tk.END)
+            
+            if 'error' in result:
+                self.risk_result_text.insert(tk.END, f"❌ Error: {result['message']}\n")
+                self.risk_result_text.config(state=tk.DISABLED)
+                return
+            
+            # Header
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+            self.risk_result_text.insert(tk.END, "                    🛡️ RISK CALCULATOR RESULTS\n")
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n\n")
+            
+            # Account Info
+            self.risk_result_text.insert(tk.END, "📋 ACCOUNT INFORMATION:\n")
+            self.risk_result_text.insert(tk.END, f"   Balance:      ${result['balance']:,.2f}\n")
+            self.risk_result_text.insert(tk.END, f"   Current Price: {result['price']:.2f}\n")
+            self.risk_result_text.insert(tk.END, f"   Leverage:     1:{result['leverage']}\n\n")
+            
+            # Settings
+            self.risk_result_text.insert(tk.END, "⚙️  CURRENT SETTINGS:\n")
+            self.risk_result_text.insert(tk.END, f"   Grid Distance:  {config.grid.grid_distance} pips\n")
+            self.risk_result_text.insert(tk.END, f"   Grid Lot Size:  {config.grid.lot_size} lots\n")
+            self.risk_result_text.insert(tk.END, f"   Grid Direction: {config.grid.direction}\n")
+            self.risk_result_text.insert(tk.END, f"   HG Enabled:     {config.hg.enabled}\n")
+            if config.hg.enabled:
+                self.risk_result_text.insert(tk.END, f"   HG Distance:    {config.hg.hg_distance} pips\n")
+                self.risk_result_text.insert(tk.END, f"   HG Multiplier:  {config.hg.hg_multiplier}x\n")
+                self.risk_result_text.insert(tk.END, f"   Max HG Levels:  {config.hg.max_hg_levels}\n")
+            self.risk_result_text.insert(tk.END, "\n")
+            
+            # Grid Only Results
+            grid_only = result['grid_only']
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+            self.risk_result_text.insert(tk.END, "📊 GRID ONLY (Without HG):\n")
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+            self.risk_result_text.insert(tk.END, f"   ✅ Max Distance:       {grid_only['max_distance_pips']:,} pips\n")
+            self.risk_result_text.insert(tk.END, f"   ✅ Max Levels:         {grid_only['max_levels']} levels\n")
+            self.risk_result_text.insert(tk.END, f"   ⚠️  Max Margin Used:    ${grid_only['max_margin']:,.2f}\n")
+            self.risk_result_text.insert(tk.END, f"   ⚠️  Max Drawdown:       ${grid_only['max_drawdown']:,.2f}\n")
+            self.risk_result_text.insert(tk.END, f"   📊 Final Margin Level: {grid_only['final_margin_level']:.1f}%\n")
+            self.risk_result_text.insert(tk.END, f"   💰 Final Equity:       ${grid_only['final_equity']:,.2f}\n")
+            self.risk_result_text.insert(tk.END, f"   🛡️  Status:             {grid_only['status']}\n\n")
+            
+            # With HG Results
+            if result['hg_enabled'] and result['with_hg']:
+                with_hg = result['with_hg']
+                self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+                self.risk_result_text.insert(tk.END, "🛡️ GRID + HG (With Hedge):\n")
+                self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+                self.risk_result_text.insert(tk.END, f"   ⚠️  Max Distance:       {with_hg['max_distance_pips']:,} pips\n")
+                self.risk_result_text.insert(tk.END, f"   📊 Max Grid Levels:    {with_hg['max_grid_levels']} levels\n")
+                self.risk_result_text.insert(tk.END, f"   🛡️  Max HG Levels:      {with_hg['max_hg_levels']} levels\n")
+                self.risk_result_text.insert(tk.END, f"   ⚠️  Max Margin Used:    ${with_hg['max_margin']:,.2f}\n")
+                self.risk_result_text.insert(tk.END, f"   ⚠️  Max Drawdown:       ${with_hg['max_drawdown']:,.2f}\n")
+                self.risk_result_text.insert(tk.END, f"       - Grid Drawdown:   ${with_hg['grid_drawdown']:,.2f}\n")
+                self.risk_result_text.insert(tk.END, f"       - HG Drawdown:     ${with_hg['hg_drawdown']:,.2f}\n")
+                self.risk_result_text.insert(tk.END, f"   📊 Final Margin Level: {with_hg['final_margin_level']:.1f}%\n")
+                self.risk_result_text.insert(tk.END, f"   💰 Final Equity:       ${with_hg['final_equity']:,.2f}\n")
+                self.risk_result_text.insert(tk.END, f"   🛡️  Status:             {with_hg['status']}\n\n")
+                
+                # Comparison
+                reduction = ((grid_only['max_distance_pips'] - with_hg['max_distance_pips']) 
+                            / grid_only['max_distance_pips'] * 100)
+                
+                self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+                self.risk_result_text.insert(tk.END, "⚖️  COMPARISON:\n")
+                self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+                self.risk_result_text.insert(tk.END, f"   ⚠️  HG reduces safe distance by: {reduction:.1f}%\n")
+                self.risk_result_text.insert(tk.END, f"   📊 Distance reduction: {grid_only['max_distance_pips'] - with_hg['max_distance_pips']:,} pips\n\n")
+            
+            # Warnings
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+            self.risk_result_text.insert(tk.END, "⚠️  IMPORTANT WARNINGS:\n")
+            self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
+            self.risk_result_text.insert(tk.END, "   1. การคำนวณนี้เป็น Worst Case (ราคาเดินทางเดียวไม่กลับ)\n")
+            self.risk_result_text.insert(tk.END, "   2. Safe Margin Level = 150% (ปลอดภัย)\n")
+            self.risk_result_text.insert(tk.END, "   3. ไม่รวมค่า Spread และ Commission\n")
+            self.risk_result_text.insert(tk.END, "   4. ราคาทองคำเคลื่อนไหวเร็ว ระวังความเสี่ยง!\n")
+            self.risk_result_text.insert(tk.END, "   5. แนะนำให้เหลือ Buffer อย่างน้อย 30-50%\n\n")
+            
+            self.risk_result_text.config(state=tk.DISABLED)
+            
+        except ValueError:
+            messagebox.showerror("Error", "กรุณาใส่ตัวเลขที่ถูกต้อง")
+        except Exception as e:
+            self.risk_result_text.config(state=tk.NORMAL)
+            self.risk_result_text.insert(tk.END, f"\n❌ Error: {str(e)}\n")
+            self.risk_result_text.config(state=tk.DISABLED)
+            messagebox.showerror("Error", f"เกิดข้อผิดพลาด: {str(e)}")
     
     def log_message(self, message: str):
         """
@@ -342,6 +538,9 @@ class TradingGUI:
                 self.log_message("✓ Connected to MT5 successfully")
                 self.log_message(f"  Account: {account.login} | Broker: {account.server}")
                 self.log_message(f"  Balance: ${account_info['balance']:,.2f} | Symbol: {mt5_connection.symbol}")
+                
+                # Auto calculate risk หลังจาก connect สำเร็จ
+                self.root.after(500, self.auto_calculate_risk)
             else:
                 self.log_message("✓ Connected to MT5 (cannot retrieve account info)")
                 
@@ -380,8 +579,15 @@ class TradingGUI:
         """บันทึกการตั้งค่า"""
         try:
             self._save_settings()
-            self.log_message("✓ Settings saved")
-            messagebox.showinfo("Success", "Settings saved successfully!")
+            self.log_message("✓ Settings saved and applied immediately!")
+            
+            # อัพเดท Risk Calculator ถ้าอยู่ใน tab นั้น
+            self.update_risk_calculator_display()
+            
+            messagebox.showinfo("Success", 
+                              "Settings saved successfully!\n\n" +
+                              "✅ ค่าใหม่ถูกใช้งานทันที (ไม่ต้องรีสตาร์ท)\n" +
+                              "✅ ระบบจะใช้ค่าใหม่สำหรับไม้ที่วางหลังจากนี้")
             
         except Exception as e:
             self.log_message(f"✗ Error saving settings: {e}")
@@ -389,12 +595,27 @@ class TradingGUI:
 
     def _save_settings(self):
         """บันทึกการตั้งค่า (internal)"""
+        # Validation: เตือนถ้า Take Profit มากกว่า Grid Distance
+        grid_distance = self.grid_distance_var.get()
+        take_profit = self.tp_var.get()
+        
+        if take_profit > grid_distance:
+            response = messagebox.askyesno(
+                "⚠️ Warning",
+                f"Take Profit ({take_profit} pips) มากกว่า Grid Distance ({grid_distance} pips)\n\n" +
+                "แนะนำ: TP ควรน้อยกว่าหรือเท่ากับ Grid Distance\n" +
+                "เพราะถ้า TP มากกว่า ไม้อาจไม่ถึง TP และสะสมเยอะขึ้น\n\n" +
+                "ต้องการบันทึกต่อไหม?"
+            )
+            if not response:
+                return
+        
         # อัพเดทค่าใน config
         config.update_grid_settings(
-            grid_distance=self.grid_distance_var.get(),
+            grid_distance=grid_distance,
             direction=self.direction_var.get(),
             lot_size=self.lot_size_var.get(),
-            take_profit=self.tp_var.get()
+            take_profit=take_profit
         )
         
         config.update_hg_settings(

@@ -34,10 +34,12 @@ class GridManager:
         logger.info("Placing initial orders...")
         logger.info(f"Direction setting: {config.grid.direction}")
         
-        # คำนวณ TP (ใช้ระยะเท่ากับ Grid Distance)
-        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        # คำนวณ TP (ใช้ค่า Take Profit ที่ตั้งไว้)
+        tp_distance = config.pips_to_price(config.grid.take_profit)
         buy_tp = current_price + tp_distance
         sell_tp = current_price - tp_distance
+        
+        logger.info(f"Grid Distance: {config.grid.grid_distance} pips | Take Profit: {config.grid.take_profit} pips")
         
         orders_placed = 0
         
@@ -168,7 +170,7 @@ class GridManager:
         """
         วาง Buy order ใหม่
         """
-        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_distance = config.pips_to_price(config.grid.take_profit)
         tp_price = current_price + tp_distance
         
         # สร้าง level_key ที่ไม่ซ้ำ
@@ -200,7 +202,7 @@ class GridManager:
         """
         วาง Sell order ใหม่
         """
-        tp_distance = config.pips_to_price(config.grid.grid_distance)
+        tp_distance = config.pips_to_price(config.grid.take_profit)
         tp_price = current_price - tp_distance
         
         # สร้าง level_key ที่ไม่ซ้ำ
@@ -283,6 +285,7 @@ class GridManager:
         ตรวจสอบ Grid Distance และวางไม้ใหม่:
         - ใช้ข้อมูลจาก MT5 positions โดยตรง (ไม่พึ่ง grid_levels)
         - วางไม้ใหม่เมื่อราคาห่างจากไม้ล่าสุด >= Grid Distance
+        - วางไม้ใหม่อัตโนมัติเมื่อฝั่งใดฝั่งหนึ่งหายไป (แก้ปัญหาไม้ฝั่งเดียวหมด)
         """
         if not self.active:
             return
@@ -302,20 +305,37 @@ class GridManager:
         # หาไม้ Buy และ Sell ล่าสุดจาก MT5 positions
         latest_buy_price = None
         latest_sell_price = None
+        has_buy_position = False
+        has_sell_position = False
         
         for pos in grid_positions:
             if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
+                has_buy_position = True
                 if latest_buy_price is None or pos['open_price'] > latest_buy_price:
                     latest_buy_price = pos['open_price']
             
             if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
+                has_sell_position = True
                 if latest_sell_price is None or pos['open_price'] < latest_sell_price:
                     latest_sell_price = pos['open_price']
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Buy (ราคาลง)
+        # ตรวจสอบเงื่อนไขการวางไม้ Buy
         if config.grid.direction in ['buy', 'both']:
-            if latest_sell_price and current_price <= (latest_sell_price - grid_distance_price):
-                # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม
+            should_place_buy = False
+            
+            # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Buy เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
+            if config.grid.direction == 'both' and not has_buy_position:
+                should_place_buy = True
+                logger.info(f"🔄 [BOTH Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
+            
+            # เงื่อนไขปกติ: ราคาลงห่างจาก latest_sell >= Grid Distance
+            elif latest_sell_price and current_price <= (latest_sell_price - grid_distance_price):
+                should_place_buy = True
+                logger.info(f"Grid Distance triggered (ราคาลง): New BUY at {current_price:.2f}")
+            
+            # วางไม้ Buy ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
+            if should_place_buy:
+                # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_buy = False
                 nearby_distance = grid_distance_price * 0.5
                 
@@ -326,14 +346,26 @@ class GridManager:
                 
                 if not has_nearby_buy:
                     self.place_new_buy_order(current_price)
-                    logger.info(f"Grid Distance triggered (ราคาลง): New BUY placed at {current_price:.2f}")
                 else:
-                    logger.info(f"⚠ Skipped Grid BUY - nearby order exists at {current_price:.2f}")
+                    logger.info(f"⚠ Skipped BUY - nearby order exists at {current_price:.2f}")
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Sell (ราคาขึ้น)
+        # ตรวจสอบเงื่อนไขการวางไม้ Sell
         if config.grid.direction in ['sell', 'both']:
-            if latest_buy_price and current_price >= (latest_buy_price + grid_distance_price):
-                # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม
+            should_place_sell = False
+            
+            # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Sell เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
+            if config.grid.direction == 'both' and not has_sell_position:
+                should_place_sell = True
+                logger.info(f"🔄 [BOTH Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
+            
+            # เงื่อนไขปกติ: ราคาขึ้นห่างจาก latest_buy >= Grid Distance
+            elif latest_buy_price and current_price >= (latest_buy_price + grid_distance_price):
+                should_place_sell = True
+                logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL at {current_price:.2f}")
+            
+            # วางไม้ Sell ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
+            if should_place_sell:
+                # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_sell = False
                 nearby_distance = grid_distance_price * 0.5
                 
@@ -344,22 +376,25 @@ class GridManager:
                 
                 if not has_nearby_sell:
                     self.place_new_sell_order(current_price)
-                    logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL placed at {current_price:.2f}")
                 else:
-                    logger.info(f"⚠ Skipped Grid SELL - nearby order exists at {current_price:.2f}")
+                    logger.info(f"⚠ Skipped SELL - nearby order exists at {current_price:.2f}")
         
         # Recovery ไม้ที่ผิดทาง
         self.recovery_wrong_direction_orders(current_price)
     
     def recovery_wrong_direction_orders(self, current_price: float):
         """
-        แก้ไม้ที่ผิดทางแบบเฉลี่ยราคา (Averaging)
+        แก้ไม้ที่ผิดทางแบบเฉลี่ยราคา (Averaging) - โหมด BOTH
         - จับแค่ไม้ล่าสุดของแต่ละฝั่ง (Buy/Sell)
         - ถ้าราคาห่างจากไม้ล่าสุด >= Grid Distance → ออกไม้เพิ่ม
         - ถ้าไม้ล่าสุด TP ปิดไป → ขยับมาจับไม้ถัดไป
-        - เคารพโหมด Buy/Sell/Both ที่ตั้งไว้
+        - ออกทั้ง Buy และ Sell พร้อมกัน (โหมด both)
         """
         if not self.active:
+            return
+        
+        # เฉพาะโหมด both เท่านั้น
+        if config.grid.direction != 'both':
             return
         
         grid_distance_price = config.pips_to_price(config.grid.grid_distance)
@@ -370,63 +405,61 @@ class GridManager:
         # ตรวจสอบ Grid positions ทั้งหมดจาก MT5
         grid_positions = position_monitor.grid_positions
         
-        # แก้ไม้ Buy (เฉพาะเมื่อโหมดเป็น 'buy' หรือ 'both')
-        if config.grid.direction in ['buy', 'both']:
-            # หาไม้ Buy ล่าสุด (ราคาต่ำสุด)
-            latest_buy = None
-            for pos in grid_positions:
-                if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
-                    if latest_buy is None or pos['open_price'] < latest_buy['open_price']:
-                        latest_buy = pos
-            
-            # ตรวจสอบว่าควรออก Buy เพิ่มไหม
-            if latest_buy:
-                distance_from_latest = config.price_to_pips(latest_buy['open_price'] - current_price)
-                
-                if distance_from_latest >= config.grid.grid_distance:
-                    # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
-                    nearby_distance = grid_distance_price * 0.5
-                    has_nearby_buy = False
-                    
-                    for pos in grid_positions:
-                        if pos['type'] == 'buy' and abs(pos['open_price'] - current_price) < nearby_distance:
-                            has_nearby_buy = True
-                            break
-                    
-                    if not has_nearby_buy:
-                        self.place_new_buy_order(current_price)
-                        logger.info(f"✓ Recovery BUY: Latest buy {latest_buy['ticket']} at {latest_buy['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add BUY")
-                    else:
-                        logger.info(f"⚠ Skipped Recovery BUY - nearby order exists at {current_price:.2f}")
+        # แก้ไม้ Buy (โหมด both)
+        # หาไม้ Buy ล่าสุด (ราคาต่ำสุด)
+        latest_buy = None
+        for pos in grid_positions:
+            if pos['type'] == 'buy' and config.mt5.comment_grid in pos['comment']:
+                if latest_buy is None or pos['open_price'] < latest_buy['open_price']:
+                    latest_buy = pos
         
-        # แก้ไม้ Sell (เฉพาะเมื่อโหมดเป็น 'sell' หรือ 'both')
-        if config.grid.direction in ['sell', 'both']:
-            # หาไม้ Sell ล่าสุด (ราคาสูงสุด)
-            latest_sell = None
-            for pos in grid_positions:
-                if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
-                    if latest_sell is None or pos['open_price'] > latest_sell['open_price']:
-                        latest_sell = pos
+        # ตรวจสอบว่าควรออก Buy เพิ่มไหม
+        if latest_buy:
+            distance_from_latest = config.price_to_pips(latest_buy['open_price'] - current_price)
             
-            # ตรวจสอบว่าควรออก Sell เพิ่มไหม
-            if latest_sell:
-                distance_from_latest = config.price_to_pips(current_price - latest_sell['open_price'])
+            if distance_from_latest >= config.grid.grid_distance:
+                # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
+                nearby_distance = grid_distance_price * 0.5
+                has_nearby_buy = False
                 
-                if distance_from_latest >= config.grid.grid_distance:
-                    # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
-                    nearby_distance = grid_distance_price * 0.5
-                    has_nearby_sell = False
-                    
-                    for pos in grid_positions:
-                        if pos['type'] == 'sell' and abs(pos['open_price'] - current_price) < nearby_distance:
-                            has_nearby_sell = True
-                            break
-                    
-                    if not has_nearby_sell:
-                        self.place_new_sell_order(current_price)
-                        logger.info(f"✓ Recovery SELL: Latest sell {latest_sell['ticket']} at {latest_sell['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add SELL")
-                    else:
-                        logger.info(f"⚠ Skipped Recovery SELL - nearby order exists at {current_price:.2f}")
+                for pos in grid_positions:
+                    if pos['type'] == 'buy' and abs(pos['open_price'] - current_price) < nearby_distance:
+                        has_nearby_buy = True
+                        break
+                
+                if not has_nearby_buy:
+                    self.place_new_buy_order(current_price)
+                    logger.info(f"✓ [BOTH] Recovery BUY: Latest buy {latest_buy['ticket']} at {latest_buy['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add BUY")
+                else:
+                    logger.info(f"⚠ Skipped Recovery BUY - nearby order exists at {current_price:.2f}")
+        
+        # แก้ไม้ Sell (โหมด both)
+        # หาไม้ Sell ล่าสุด (ราคาสูงสุด)
+        latest_sell = None
+        for pos in grid_positions:
+            if pos['type'] == 'sell' and config.mt5.comment_grid in pos['comment']:
+                if latest_sell is None or pos['open_price'] > latest_sell['open_price']:
+                    latest_sell = pos
+        
+        # ตรวจสอบว่าควรออก Sell เพิ่มไหม
+        if latest_sell:
+            distance_from_latest = config.price_to_pips(current_price - latest_sell['open_price'])
+            
+            if distance_from_latest >= config.grid.grid_distance:
+                # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
+                nearby_distance = grid_distance_price * 0.5
+                has_nearby_sell = False
+                
+                for pos in grid_positions:
+                    if pos['type'] == 'sell' and abs(pos['open_price'] - current_price) < nearby_distance:
+                        has_nearby_sell = True
+                        break
+                
+                if not has_nearby_sell:
+                    self.place_new_sell_order(current_price)
+                    logger.info(f"✓ [BOTH] Recovery SELL: Latest sell {latest_sell['ticket']} at {latest_sell['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add SELL")
+                else:
+                    logger.info(f"⚠ Skipped Recovery SELL - nearby order exists at {current_price:.2f}")
     
     def restore_existing_positions(self):
         """
@@ -500,7 +533,7 @@ class GridManager:
         
         logger.info(f"Grid Trading started at {self.start_price:.2f}")
         logger.info(f"Direction: {config.grid.direction}, Distance: {config.grid.grid_distance} pips")
-        logger.info(f"Lot Size: {config.grid.lot_size}, TP: {config.grid.grid_distance} pips (same as grid distance)")
+        logger.info(f"Lot Size: {config.grid.lot_size}, Take Profit: {config.grid.take_profit} pips")
         
         return True
     
