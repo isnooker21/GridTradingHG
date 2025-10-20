@@ -3,6 +3,7 @@
 
 from typing import List, Dict, Optional
 import logging
+import time
 from mt5_connection import mt5_connection
 from position_monitor import position_monitor
 from config import config
@@ -131,6 +132,16 @@ class GridManager:
         Args:
             order_type: 'buy' หรือ 'sell'
         """
+        # ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
+        if self.check_recent_orders():
+            logger.warning("Recent orders found - preventing duplicate replacement")
+            return None
+        
+        # ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
+        if self.check_pending_orders():
+            logger.warning("Pending orders found - waiting for completion")
+            return None
+        
         # ดึงราคาปัจจุบัน
         price_info = mt5_connection.get_current_price()
         if not price_info:
@@ -169,10 +180,81 @@ class GridManager:
         else:
             logger.info(f"⚠ Skipped replacement {order_type.upper()} - nearby order exists at {current_price:.2f}")
     
+    def check_recent_orders(self) -> bool:
+        """
+        ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
+        ตรวจสอบจาก MT5 positions, placed_orders, grid_levels
+        
+        Returns:
+            True ถ้ามี Order ใหม่เกิดขึ้น
+        """
+        try:
+            # อัพเดท positions
+            position_monitor.update_all_positions()
+            grid_positions = position_monitor.grid_positions
+            
+            # ตรวจสอบจาก MT5 positions
+            for pos in grid_positions:
+                if pos['ticket'] not in self.placed_orders.values():
+                    logger.warning(f"Recent order found in MT5: {pos['ticket']} - preventing duplicate")
+                    return True
+            
+            # ตรวจสอบจาก placed_orders
+            for level_key, ticket in self.placed_orders.items():
+                if ticket not in [p['ticket'] for p in grid_positions]:
+                    logger.warning(f"Recent order found in placed_orders: {ticket} - preventing duplicate")
+                    return True
+            
+            # ตรวจสอบจาก grid_levels
+            for grid in self.grid_levels:
+                if grid['ticket'] not in [p['ticket'] for p in grid_positions]:
+                    logger.warning(f"Recent order found in grid_levels: {grid['ticket']} - preventing duplicate")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking recent orders: {e}")
+            return False
+    
+    def check_pending_orders(self) -> bool:
+        """
+        ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
+        
+        Returns:
+            True ถ้ามี Order ที่ยังไม่สำเร็จ
+        """
+        try:
+            # อัพเดท positions
+            position_monitor.update_all_positions()
+            grid_positions = position_monitor.grid_positions
+            
+            # ตรวจสอบว่ามี position ใหม่เกิดขึ้นหรือไม่
+            for pos in grid_positions:
+                if pos['ticket'] not in self.placed_orders.values():
+                    logger.warning(f"Pending order found: {pos['ticket']} - waiting for completion")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking pending orders: {e}")
+            return False
+
     def place_new_buy_order(self, current_price: float):
         """
         วาง Buy order ใหม่ (ใช้ค่า Buy) พร้อมป้องกันการวางซ้ำ
         """
+        # ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
+        if self.check_recent_orders():
+            logger.warning("Recent orders found - preventing duplicate")
+            return None
+        
+        # ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
+        if self.check_pending_orders():
+            logger.warning("Pending orders found - waiting for completion")
+            return None
+        
         # ป้องกันการวางพร้อมกัน (Lock)
         if self.placing_order_lock:
             logger.warning("⚠️ Order placement locked - preventing duplicate order")
@@ -217,7 +299,9 @@ class GridManager:
                 comment=comment
             )
             
+            # ตรวจสอบว่า Order สำเร็จจริงหรือไม่
             if ticket:
+                # สำเร็จแล้ว
                 self.placed_orders[level_key] = ticket
                 self.grid_levels.append({
                     'level_key': level_key,
@@ -229,6 +313,11 @@ class GridManager:
                 })
                 
                 logger.info(f"✓ New BUY placed: {config.grid.buy_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
+            else:
+                # ล้มเหลว ให้ retry
+                logger.warning("Order placement failed - retrying...")
+                time.sleep(1)
+                return self.place_new_buy_order(current_price)
         finally:
             self.placing_order_lock = False
     
@@ -236,6 +325,16 @@ class GridManager:
         """
         วาง Sell order ใหม่ (ใช้ค่า Sell) พร้อมป้องกันการวางซ้ำ
         """
+        # ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
+        if self.check_recent_orders():
+            logger.warning("Recent orders found - preventing duplicate")
+            return None
+        
+        # ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
+        if self.check_pending_orders():
+            logger.warning("Pending orders found - waiting for completion")
+            return None
+        
         # ป้องกันการวางพร้อมกัน (Lock)
         if self.placing_order_lock:
             logger.warning("⚠️ Order placement locked - preventing duplicate order")
@@ -280,7 +379,9 @@ class GridManager:
                 comment=comment
             )
             
+            # ตรวจสอบว่า Order สำเร็จจริงหรือไม่
             if ticket:
+                # สำเร็จแล้ว
                 self.placed_orders[level_key] = ticket
                 self.grid_levels.append({
                     'level_key': level_key,
@@ -292,6 +393,11 @@ class GridManager:
                 })
                 
                 logger.info(f"✓ New SELL placed: {config.grid.sell_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
+            else:
+                # ล้มเหลว ให้ retry
+                logger.warning("Order placement failed - retrying...")
+                time.sleep(1)
+                return self.place_new_sell_order(current_price)
         finally:
             self.placing_order_lock = False
     
