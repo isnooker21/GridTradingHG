@@ -32,13 +32,15 @@ class HGManager:
             List ของ HG ที่ควรวาง
         """
         triggers = []
-        hg_distance_price = config.pips_to_price(config.hg.hg_distance)
         
-        # ตรวจสอบแต่ละ level
-        for i in range(1, config.hg.max_hg_levels + 1):  # ใช้ค่าจาก config
-            # HG Buy (ด้านล่าง) - เฉพาะเมื่อเปิดใช้งานและเลือก buy/both
-            if config.hg.direction in ['buy', 'both']:
-                level_price_buy = self.start_price - (hg_distance_price * i)
+        # ใช้ระยะห่างแยก Buy/Sell
+        buy_hg_distance_price = config.pips_to_price(config.hg.buy_hg_distance)
+        sell_hg_distance_price = config.pips_to_price(config.hg.sell_hg_distance)
+        
+        # HG Buy (ด้านล่าง) - เฉพาะเมื่อเปิดใช้งานและเลือก buy/both
+        if config.hg.direction in ['buy', 'both']:
+            for i in range(1, config.hg.buy_max_hg_levels + 1):
+                level_price_buy = self.start_price - (buy_hg_distance_price * i)
                 level_key_buy = f"HG_BUY_{i}"
                 
                 if (current_price <= level_price_buy and 
@@ -51,10 +53,11 @@ class HGManager:
                         'type': 'buy',
                         'level': -i
                     })
-            
-            # HG Sell (ด้านบน) - เฉพาะเมื่อเปิดใช้งานและเลือก sell/both
-            if config.hg.direction in ['sell', 'both']:
-                level_price_sell = self.start_price + (hg_distance_price * i)
+        
+        # HG Sell (ด้านบน) - เฉพาะเมื่อเปิดใช้งานและเลือก sell/both
+        if config.hg.direction in ['sell', 'both']:
+            for i in range(1, config.hg.sell_max_hg_levels + 1):
+                level_price_sell = self.start_price + (sell_hg_distance_price * i)
                 level_key_sell = f"HG_SELL_{i}"
                 
                 if (current_price >= level_price_sell and 
@@ -78,11 +81,13 @@ class HGManager:
         if not self.active or not config.hg.enabled:
             return
         
-        hg_distance_price = config.pips_to_price(config.hg.hg_distance)
+        # ใช้ค่าเฉลี่ยของ Buy และ Sell HG Distance
+        avg_hg_distance_price = (config.pips_to_price(config.hg.buy_hg_distance) + 
+                                 config.pips_to_price(config.hg.sell_hg_distance)) / 2
         distance_from_start = abs(current_price - self.start_price)
         
         # ถ้าราคาเคลื่อนไหวไกลเกิน 2 เท่าของ HG Distance
-        if distance_from_start >= (hg_distance_price * 2):
+        if distance_from_start >= (avg_hg_distance_price * 2):
             # อัพเดท start_price เป็นราคาปัจจุบัน
             old_start_price = self.start_price
             self.start_price = current_price
@@ -96,10 +101,13 @@ class HGManager:
             self.closed_hg_levels = set()
             logger.info("HG positions cleared - will place new HG levels")
     
-    def calculate_hg_lot(self) -> float:
+    def calculate_hg_lot(self, hg_type: str = 'buy') -> float:
         """
-        คำนวณ lot size สำหรับ HG
-        HG Lot = Total Grid Exposure × multiplier
+        คำนวณ lot size สำหรับ HG (ใช้ multiplier และ initial lot แยก Buy/Sell)
+        HG Lot = max(Grid Exposure × multiplier, Initial Lot)
+        
+        Args:
+            hg_type: 'buy' หรือ 'sell'
         
         Returns:
             lot size สำหรับ HG
@@ -108,17 +116,24 @@ class HGManager:
         exposure = position_monitor.get_net_grid_exposure()
         net_volume = exposure['net_volume']
         
-        # คำนวณ HG lot
-        hg_lot = net_volume * config.hg.hg_multiplier
+        # เลือก multiplier และ initial lot ตามประเภท
+        if hg_type == 'buy':
+            multiplier = config.hg.buy_hg_multiplier
+            initial_lot = config.hg.buy_hg_initial_lot
+        else:  # sell
+            multiplier = config.hg.sell_hg_multiplier
+            initial_lot = config.hg.sell_hg_initial_lot
         
-        # ถ้า Grid ยังไม่มี exposure ใช้ค่าเริ่มต้น
-        if hg_lot < 0.01:
-            hg_lot = 0.01
+        # คำนวณ HG lot
+        hg_lot = net_volume * multiplier
+        
+        # ใช้ค่าที่มากกว่าระหว่าง calculated lot กับ initial lot
+        hg_lot = max(hg_lot, initial_lot)
         
         # ปัดเศษตาม step
         hg_lot = round(hg_lot, 2)
         
-        logger.info(f"HG Lot calculated: {hg_lot} (Grid exposure: {net_volume})")
+        logger.info(f"HG {hg_type.upper()} Lot calculated: {hg_lot} (Grid exposure: {net_volume}, Multiplier: {multiplier}, Min: {initial_lot})")
         
         return hg_lot
     
@@ -132,8 +147,8 @@ class HGManager:
         Returns:
             ticket number หรือ None
         """
-        # คำนวณ lot size
-        hg_lot = self.calculate_hg_lot()
+        # คำนวณ lot size (แยก Buy/Sell)
+        hg_lot = self.calculate_hg_lot(hg_info['type'])
         
         # กำหนด comment
         comment = f"{config.mt5.comment_hg}_{hg_info['level_key']}"
@@ -190,23 +205,31 @@ class HGManager:
             # คำนวณกำไรเป็น pips
             if hg_data['type'] == 'buy':
                 pips_profit = config.price_to_pips(pos['current_price'] - pos['open_price'])
+                sl_trigger = config.hg.buy_hg_sl_trigger
             else:  # sell
                 pips_profit = config.price_to_pips(pos['open_price'] - pos['current_price'])
+                sl_trigger = config.hg.sell_hg_sl_trigger
             
-            # ตรวจสอบว่าถึง trigger breakeven หรือยัง
-            if pips_profit >= config.hg.hg_sl_trigger:
+            # ตรวจสอบว่าถึง trigger breakeven หรือยัง (ใช้ค่าแยก Buy/Sell)
+            if pips_profit >= sl_trigger:
                 self.set_hg_breakeven_sl(hg_data, pos)
     
     def set_hg_breakeven_sl(self, hg_data: Dict, position: Dict):
         """
-        ตั้ง Stop Loss แบบ breakeven สำหรับ HG
+        ตั้ง Stop Loss แบบ breakeven สำหรับ HG (ใช้ buffer แยก Buy/Sell)
         
         Args:
             hg_data: ข้อมูล HG
             position: ข้อมูล position จาก MT5
         """
+        # เลือก buffer ตามประเภท
+        if hg_data['type'] == 'buy':
+            buffer = config.hg.buy_sl_buffer
+        else:  # sell
+            buffer = config.hg.sell_sl_buffer
+        
         # คำนวณราคา breakeven (เพิ่ม buffer)
-        buffer_price = config.pips_to_price(config.hg.sl_buffer)
+        buffer_price = config.pips_to_price(buffer)
         
         if hg_data['type'] == 'buy':
             sl_price = position['open_price'] + buffer_price
@@ -222,7 +245,7 @@ class HGManager:
         if success:
             hg_data['breakeven_set'] = True
             logger.info(f"HG Breakeven set: Ticket {hg_data['ticket']} | SL: {sl_price:.2f}")
-            logger.info(f"Buffer: {config.hg.sl_buffer} pips")
+            logger.info(f"Buffer: {buffer} pips ({hg_data['type'].upper()})")
     
     def manage_multiple_hg(self):
         """
@@ -352,9 +375,12 @@ class HGManager:
         restored_hg_count = self.restore_existing_hg_positions()
         
         logger.info(f"HG System started at {self.start_price:.2f}")
-        logger.info(f"HG Distance: {config.hg.hg_distance} pips")
-        logger.info(f"HG SL Trigger: {config.hg.hg_sl_trigger} pips")
-        logger.info(f"HG Multiplier: {config.hg.hg_multiplier}x")
+        logger.info(f"Buy HG:  Distance={config.hg.buy_hg_distance} pips, SL Trigger={config.hg.buy_hg_sl_trigger} pips, " +
+                   f"Multiplier={config.hg.buy_hg_multiplier}x, Initial Lot={config.hg.buy_hg_initial_lot}, " +
+                   f"Buffer={config.hg.buy_sl_buffer} pips, Max Levels={config.hg.buy_max_hg_levels}")
+        logger.info(f"Sell HG: Distance={config.hg.sell_hg_distance} pips, SL Trigger={config.hg.sell_hg_sl_trigger} pips, " +
+                   f"Multiplier={config.hg.sell_hg_multiplier}x, Initial Lot={config.hg.sell_hg_initial_lot}, " +
+                   f"Buffer={config.hg.sell_sl_buffer} pips, Max Levels={config.hg.sell_max_hg_levels}")
         logger.info(f"Restored {restored_hg_count} existing HG positions")
     
     def stop_hg_system(self, close_positions: bool = False):

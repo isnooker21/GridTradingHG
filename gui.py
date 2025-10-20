@@ -137,21 +137,14 @@ class TradingGUI:
         self.expiry_date_var.trace_add("write", format_expiry_date)
 
         # ============ Grid Settings ============
-        grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings", padding="10")
+        grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="10")
         grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N), pady=5, padx=(0, 5))
         
-        # Grid Distance
-        ttk.Label(grid_frame, text="Grid Distance (pips):").grid(row=0, column=0, sticky=tk.W, pady=3)
-        self.grid_distance_var = tk.IntVar(value=200)
-        entry_grid = ttk.Entry(grid_frame, textvariable=self.grid_distance_var, width=15)
-        entry_grid.grid(row=0, column=1, pady=3)
-        ttk.Label(grid_frame, text="(ระยะห่างวางไม้)", font=("Arial", 8), foreground="gray").grid(row=0, column=2, sticky=tk.W, padx=5)
-        
         # Direction
-        ttk.Label(grid_frame, text="Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
-        self.direction_var = tk.StringVar(value="buy")
+        ttk.Label(grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.direction_var = tk.StringVar(value="both")
         direction_frame = ttk.Frame(grid_frame)
-        direction_frame.grid(row=1, column=1, sticky=tk.W, pady=3)
+        direction_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, pady=3)
         ttk.Radiobutton(direction_frame, text="Buy Only", variable=self.direction_var, 
                        value="buy").pack(side=tk.LEFT)
         ttk.Radiobutton(direction_frame, text="Sell Only", variable=self.direction_var, 
@@ -159,37 +152,48 @@ class TradingGUI:
         ttk.Radiobutton(direction_frame, text="Both", variable=self.direction_var, 
                        value="both").pack(side=tk.LEFT)
         
-        # Lot Size (แสดงเป็น label)
-        ttk.Label(grid_frame, text="Lot Size:").grid(row=2, column=0, sticky=tk.W, pady=3)
-        self.lot_size_var = tk.DoubleVar(value=0.01)
-        lot_frame = ttk.Frame(grid_frame)
-        lot_frame.grid(row=2, column=1, sticky=tk.W, pady=3)
-        ttk.Label(lot_frame, textvariable=self.lot_size_var, 
-                 font=("Arial", 9, "bold")).pack(side=tk.LEFT)
-        ttk.Label(lot_frame, text=" lots", 
-                 foreground="gray").pack(side=tk.LEFT)
+        # Headers
+        ttk.Label(grid_frame, text="", width=18).grid(row=1, column=0, pady=3)
+        ttk.Label(grid_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
+                 foreground="green").grid(row=1, column=1, pady=3)
+        ttk.Label(grid_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
+                 foreground="red").grid(row=1, column=2, pady=3)
+        
+        # Grid Distance
+        ttk.Label(grid_frame, text="Grid Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
+        self.buy_grid_distance_var = tk.IntVar(value=50)
+        ttk.Entry(grid_frame, textvariable=self.buy_grid_distance_var, width=12).grid(row=2, column=1, pady=3, padx=2)
+        self.sell_grid_distance_var = tk.IntVar(value=50)
+        ttk.Entry(grid_frame, textvariable=self.sell_grid_distance_var, width=12).grid(row=2, column=2, pady=3, padx=2)
+        
+        # Lot Size
+        ttk.Label(grid_frame, text="Lot Size:").grid(row=3, column=0, sticky=tk.W, pady=3)
+        self.buy_lot_size_var = tk.DoubleVar(value=0.01)
+        ttk.Entry(grid_frame, textvariable=self.buy_lot_size_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        self.sell_lot_size_var = tk.DoubleVar(value=0.01)
+        ttk.Entry(grid_frame, textvariable=self.sell_lot_size_var, width=12).grid(row=3, column=2, pady=3, padx=2)
         
         # Take Profit
-        ttk.Label(grid_frame, text="Take Profit (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
-        self.tp_var = tk.IntVar(value=100)
-        entry_tp = ttk.Entry(grid_frame, textvariable=self.tp_var, width=15)
-        entry_tp.grid(row=3, column=1, pady=3)
-        ttk.Label(grid_frame, text="(ระยะ TP แต่ละไม้)", font=("Arial", 8), foreground="gray").grid(row=3, column=2, sticky=tk.W, padx=5)
+        ttk.Label(grid_frame, text="Take Profit (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        self.buy_tp_var = tk.IntVar(value=50)
+        ttk.Entry(grid_frame, textvariable=self.buy_tp_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        self.sell_tp_var = tk.IntVar(value=50)
+        ttk.Entry(grid_frame, textvariable=self.sell_tp_var, width=12).grid(row=4, column=2, pady=3, padx=2)
         
         # ============ HG Settings ============
-        hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings", padding="10")
+        hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="10")
         hg_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N), pady=5)
         
         # HG Enable/Disable
         self.hg_enabled_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(hg_frame, text="Enable HG System", 
-                       variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=3)
+                       variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=3)
         
         # HG Direction
         ttk.Label(hg_frame, text="HG Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
-        self.hg_direction_var = tk.StringVar(value="both")
+        self.hg_direction_var = tk.StringVar(value="buy")
         hg_direction_frame = ttk.Frame(hg_frame)
-        hg_direction_frame.grid(row=1, column=1, sticky=tk.W, pady=3)
+        hg_direction_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=3)
         ttk.Radiobutton(hg_direction_frame, text="Buy Only", variable=self.hg_direction_var, 
                        value="buy").pack(side=tk.LEFT)
         ttk.Radiobutton(hg_direction_frame, text="Sell Only", variable=self.hg_direction_var, 
@@ -197,30 +201,54 @@ class TradingGUI:
         ttk.Radiobutton(hg_direction_frame, text="Both", variable=self.hg_direction_var, 
                        value="both").pack(side=tk.LEFT)
         
+        # Headers
+        ttk.Label(hg_frame, text="", width=18).grid(row=2, column=0, pady=3)
+        ttk.Label(hg_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
+                 foreground="green").grid(row=2, column=1, pady=3)
+        ttk.Label(hg_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
+                 foreground="red").grid(row=2, column=2, pady=3)
+        
         # HG Distance
-        ttk.Label(hg_frame, text="HG Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
-        self.hg_distance_var = tk.IntVar(value=2000)
-        ttk.Entry(hg_frame, textvariable=self.hg_distance_var, width=15).grid(row=2, column=1, pady=3)
+        ttk.Label(hg_frame, text="HG Distance (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
+        self.buy_hg_distance_var = tk.IntVar(value=200)
+        ttk.Entry(hg_frame, textvariable=self.buy_hg_distance_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        self.sell_hg_distance_var = tk.IntVar(value=2000)
+        ttk.Entry(hg_frame, textvariable=self.sell_hg_distance_var, width=12).grid(row=3, column=2, pady=3, padx=2)
         
         # HG SL Trigger
-        ttk.Label(hg_frame, text="HG SL Trigger (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
-        self.hg_sl_trigger_var = tk.IntVar(value=1000)
-        ttk.Entry(hg_frame, textvariable=self.hg_sl_trigger_var, width=15).grid(row=3, column=1, pady=3)
-        
-        # SL Buffer
-        ttk.Label(hg_frame, text="SL Buffer (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
-        self.sl_buffer_var = tk.IntVar(value=20)
-        ttk.Entry(hg_frame, textvariable=self.sl_buffer_var, width=15).grid(row=4, column=1, pady=3)
+        ttk.Label(hg_frame, text="HG SL Trigger (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        self.buy_hg_sl_trigger_var = tk.IntVar(value=100)
+        ttk.Entry(hg_frame, textvariable=self.buy_hg_sl_trigger_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        self.sell_hg_sl_trigger_var = tk.IntVar(value=1000)
+        ttk.Entry(hg_frame, textvariable=self.sell_hg_sl_trigger_var, width=12).grid(row=4, column=2, pady=3, padx=2)
         
         # HG Multiplier
         ttk.Label(hg_frame, text="HG Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=3)
-        self.hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(hg_frame, textvariable=self.hg_multiplier_var, width=15).grid(row=5, column=1, pady=3)
+        self.buy_hg_multiplier_var = tk.DoubleVar(value=1.2)
+        ttk.Entry(hg_frame, textvariable=self.buy_hg_multiplier_var, width=12).grid(row=5, column=1, pady=3, padx=2)
+        self.sell_hg_multiplier_var = tk.DoubleVar(value=1.2)
+        ttk.Entry(hg_frame, textvariable=self.sell_hg_multiplier_var, width=12).grid(row=5, column=2, pady=3, padx=2)
+        
+        # HG Initial Lot
+        ttk.Label(hg_frame, text="HG Initial Lot:").grid(row=6, column=0, sticky=tk.W, pady=3)
+        self.buy_hg_initial_lot_var = tk.DoubleVar(value=0.01)
+        ttk.Entry(hg_frame, textvariable=self.buy_hg_initial_lot_var, width=12).grid(row=6, column=1, pady=3, padx=2)
+        self.sell_hg_initial_lot_var = tk.DoubleVar(value=0.01)
+        ttk.Entry(hg_frame, textvariable=self.sell_hg_initial_lot_var, width=12).grid(row=6, column=2, pady=3, padx=2)
+        
+        # SL Buffer
+        ttk.Label(hg_frame, text="SL Buffer (pips):").grid(row=7, column=0, sticky=tk.W, pady=3)
+        self.buy_sl_buffer_var = tk.IntVar(value=10)
+        ttk.Entry(hg_frame, textvariable=self.buy_sl_buffer_var, width=12).grid(row=7, column=1, pady=3, padx=2)
+        self.sell_sl_buffer_var = tk.IntVar(value=20)
+        ttk.Entry(hg_frame, textvariable=self.sell_sl_buffer_var, width=12).grid(row=7, column=2, pady=3, padx=2)
         
         # Max HG Levels
-        ttk.Label(hg_frame, text="Max HG Levels:").grid(row=6, column=0, sticky=tk.W, pady=3)
-        self.max_hg_levels_var = tk.IntVar(value=10)
-        ttk.Entry(hg_frame, textvariable=self.max_hg_levels_var, width=15).grid(row=6, column=1, pady=3)
+        ttk.Label(hg_frame, text="Max HG Levels:").grid(row=8, column=0, sticky=tk.W, pady=3)
+        self.buy_max_hg_levels_var = tk.IntVar(value=10)
+        ttk.Entry(hg_frame, textvariable=self.buy_max_hg_levels_var, width=12).grid(row=8, column=1, pady=3, padx=2)
+        self.sell_max_hg_levels_var = tk.IntVar(value=10)
+        ttk.Entry(hg_frame, textvariable=self.sell_max_hg_levels_var, width=12).grid(row=8, column=2, pady=3, padx=2)
         
         # ============ Controls ============
         control_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="10")
@@ -596,15 +624,22 @@ class TradingGUI:
     def _save_settings(self):
         """บันทึกการตั้งค่า (internal)"""
         # Validation: เตือนถ้า Take Profit มากกว่า Grid Distance
-        grid_distance = self.grid_distance_var.get()
-        take_profit = self.tp_var.get()
+        buy_grid_dist = self.buy_grid_distance_var.get()
+        buy_tp = self.buy_tp_var.get()
+        sell_grid_dist = self.sell_grid_distance_var.get()
+        sell_tp = self.sell_tp_var.get()
         
-        if take_profit > grid_distance:
+        warnings = []
+        if buy_tp > buy_grid_dist:
+            warnings.append(f"Buy TP ({buy_tp}) > Buy Grid Distance ({buy_grid_dist})")
+        if sell_tp > sell_grid_dist:
+            warnings.append(f"Sell TP ({sell_tp}) > Sell Grid Distance ({sell_grid_dist})")
+        
+        if warnings:
             response = messagebox.askyesno(
                 "⚠️ Warning",
-                f"Take Profit ({take_profit} pips) มากกว่า Grid Distance ({grid_distance} pips)\n\n" +
+                "พบปัญหา:\n" + "\n".join(warnings) + "\n\n" +
                 "แนะนำ: TP ควรน้อยกว่าหรือเท่ากับ Grid Distance\n" +
-                "เพราะถ้า TP มากกว่า ไม้อาจไม่ถึง TP และสะสมเยอะขึ้น\n\n" +
                 "ต้องการบันทึกต่อไหม?"
             )
             if not response:
@@ -612,20 +647,44 @@ class TradingGUI:
         
         # อัพเดทค่าใน config
         config.update_grid_settings(
-            grid_distance=grid_distance,
             direction=self.direction_var.get(),
-            lot_size=self.lot_size_var.get(),
-            take_profit=take_profit
+            # Buy Settings
+            buy_grid_distance=buy_grid_dist,
+            buy_lot_size=self.buy_lot_size_var.get(),
+            buy_take_profit=buy_tp,
+            # Sell Settings
+            sell_grid_distance=sell_grid_dist,
+            sell_lot_size=self.sell_lot_size_var.get(),
+            sell_take_profit=sell_tp,
+            # Backward compatibility
+            grid_distance=buy_grid_dist,  # ใช้ค่า buy เป็น default
+            lot_size=self.buy_lot_size_var.get(),
+            take_profit=buy_tp
         )
         
         config.update_hg_settings(
             enabled=self.hg_enabled_var.get(),
             direction=self.hg_direction_var.get(),
-            hg_distance=self.hg_distance_var.get(),
-            hg_sl_trigger=self.hg_sl_trigger_var.get(),
-            sl_buffer=self.sl_buffer_var.get(),
-            hg_multiplier=self.hg_multiplier_var.get(),
-            max_hg_levels=self.max_hg_levels_var.get()
+            # Buy HG Settings
+            buy_hg_distance=self.buy_hg_distance_var.get(),
+            buy_hg_sl_trigger=self.buy_hg_sl_trigger_var.get(),
+            buy_hg_multiplier=self.buy_hg_multiplier_var.get(),
+            buy_hg_initial_lot=self.buy_hg_initial_lot_var.get(),
+            buy_sl_buffer=self.buy_sl_buffer_var.get(),
+            buy_max_hg_levels=self.buy_max_hg_levels_var.get(),
+            # Sell HG Settings
+            sell_hg_distance=self.sell_hg_distance_var.get(),
+            sell_hg_sl_trigger=self.sell_hg_sl_trigger_var.get(),
+            sell_hg_multiplier=self.sell_hg_multiplier_var.get(),
+            sell_hg_initial_lot=self.sell_hg_initial_lot_var.get(),
+            sell_sl_buffer=self.sell_sl_buffer_var.get(),
+            sell_max_hg_levels=self.sell_max_hg_levels_var.get(),
+            # Backward compatibility
+            sl_buffer=self.buy_sl_buffer_var.get(),
+            max_hg_levels=self.buy_max_hg_levels_var.get(),
+            hg_distance=self.buy_hg_distance_var.get(),
+            hg_sl_trigger=self.buy_hg_sl_trigger_var.get(),
+            hg_multiplier=self.buy_hg_multiplier_var.get()
         )
         
         # บันทึกลงไฟล์
@@ -633,18 +692,30 @@ class TradingGUI:
     
     def load_settings_to_gui(self):
         """โหลดการตั้งค่าจาก config มาแสดงใน GUI"""
-        self.grid_distance_var.set(config.grid.grid_distance)
+        # Grid Settings
         self.direction_var.set(config.grid.direction)
-        self.lot_size_var.set(config.grid.lot_size)
-        self.tp_var.set(config.grid.take_profit)
+        self.buy_grid_distance_var.set(config.grid.buy_grid_distance)
+        self.buy_lot_size_var.set(config.grid.buy_lot_size)
+        self.buy_tp_var.set(config.grid.buy_take_profit)
+        self.sell_grid_distance_var.set(config.grid.sell_grid_distance)
+        self.sell_lot_size_var.set(config.grid.sell_lot_size)
+        self.sell_tp_var.set(config.grid.sell_take_profit)
         
+        # HG Settings
         self.hg_enabled_var.set(config.hg.enabled)
         self.hg_direction_var.set(config.hg.direction)
-        self.hg_distance_var.set(config.hg.hg_distance)
-        self.hg_sl_trigger_var.set(config.hg.hg_sl_trigger)
-        self.sl_buffer_var.set(config.hg.sl_buffer)
-        self.hg_multiplier_var.set(config.hg.hg_multiplier)
-        self.max_hg_levels_var.set(config.hg.max_hg_levels)
+        self.buy_hg_distance_var.set(config.hg.buy_hg_distance)
+        self.buy_hg_sl_trigger_var.set(config.hg.buy_hg_sl_trigger)
+        self.buy_hg_multiplier_var.set(config.hg.buy_hg_multiplier)
+        self.buy_hg_initial_lot_var.set(config.hg.buy_hg_initial_lot)
+        self.buy_sl_buffer_var.set(config.hg.buy_sl_buffer)
+        self.buy_max_hg_levels_var.set(config.hg.buy_max_hg_levels)
+        self.sell_hg_distance_var.set(config.hg.sell_hg_distance)
+        self.sell_hg_sl_trigger_var.set(config.hg.sell_hg_sl_trigger)
+        self.sell_hg_multiplier_var.set(config.hg.sell_hg_multiplier)
+        self.sell_hg_initial_lot_var.set(config.hg.sell_hg_initial_lot)
+        self.sell_sl_buffer_var.set(config.hg.sell_sl_buffer)
+        self.sell_max_hg_levels_var.set(config.hg.sell_max_hg_levels)
     
     def refresh_accounts(self):
         """รีเฟรชรายการบัญชี MT5 ที่มีอยู่"""

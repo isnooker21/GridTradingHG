@@ -9,21 +9,53 @@ from typing import Optional
 @dataclass
 class GridSettings:
     """การตั้งค่า Grid Trading"""
-    grid_distance: int = 200  # ระยะห่าง Grid (pips)
-    direction: str = "buy"    # ทิศทาง: buy, sell, both
-    lot_size: float = 0.01    # ขนาด lot ต่อ Grid
-    take_profit: int = 100    # Take Profit (pips)
+    # General
+    direction: str = "both"        # ทิศทาง: buy, sell, both
+    
+    # Buy Settings
+    buy_grid_distance: int = 50    # ระยะห่าง Grid Buy (pips)
+    buy_lot_size: float = 0.01     # ขนาด lot Buy
+    buy_take_profit: int = 50      # Take Profit Buy (pips)
+    
+    # Sell Settings
+    sell_grid_distance: int = 50   # ระยะห่าง Grid Sell (pips)
+    sell_lot_size: float = 0.01    # ขนาด lot Sell
+    sell_take_profit: int = 50     # Take Profit Sell (pips)
+    
+    # Backward compatibility (ค่าเดิม)
+    grid_distance: int = 50
+    lot_size: float = 0.01
+    take_profit: int = 50
     
 @dataclass
 class HGSettings:
     """การตั้งค่า Hedge (HG)"""
-    enabled: bool = True      # เปิด/ปิดระบบ HG
-    direction: str = "both"   # ทิศทาง HG: buy, sell, both
-    hg_distance: int = 2000   # ระยะห่างที่วาง HG (pips)
-    hg_sl_trigger: int = 1000 # ระยะที่จะตั้ง SL breakeven (pips)
-    sl_buffer: int = 20       # buffer สำหรับ SL (pips)
-    hg_multiplier: float = 1.2 # ตัวคูณสำหรับคำนวณ HG lot
-    max_hg_levels: int = 10   # จำนวน HG levels สูงสุด
+    # General
+    enabled: bool = True           # เปิด/ปิดระบบ HG
+    direction: str = "buy"         # ทิศทาง HG: buy, sell, both (ตั้งเป็น buy only)
+    
+    # Buy HG Settings
+    buy_hg_distance: int = 200     # ระยะห่างที่วาง HG Buy (pips)
+    buy_hg_sl_trigger: int = 100   # ระยะที่จะตั้ง SL breakeven Buy (pips)
+    buy_hg_multiplier: float = 1.2 # ตัวคูณสำหรับคำนวณ HG lot Buy
+    buy_hg_initial_lot: float = 0.01 # Lot เริ่มต้นของ HG Buy
+    buy_sl_buffer: int = 10        # buffer สำหรับ SL Buy (pips)
+    buy_max_hg_levels: int = 10    # จำนวน HG levels สูงสุด Buy
+    
+    # Sell HG Settings
+    sell_hg_distance: int = 2000   # ระยะห่างที่วาง HG Sell (pips)
+    sell_hg_sl_trigger: int = 1000 # ระยะที่จะตั้ง SL breakeven Sell (pips)
+    sell_hg_multiplier: float = 1.2 # ตัวคูณสำหรับคำนวณ HG lot Sell
+    sell_hg_initial_lot: float = 0.01 # Lot เริ่มต้นของ HG Sell
+    sell_sl_buffer: int = 20       # buffer สำหรับ SL Sell (pips)
+    sell_max_hg_levels: int = 10   # จำนวน HG levels สูงสุด Sell
+    
+    # Backward compatibility
+    sl_buffer: int = 10
+    max_hg_levels: int = 10
+    hg_distance: int = 200
+    hg_sl_trigger: int = 100
+    hg_multiplier: float = 1.2
     
 @dataclass
 class MT5Settings:
@@ -64,8 +96,20 @@ class Config:
         try:
             # Grid Settings
             if 'Grid' in parser:
+                self.grid.direction = parser.get('Grid', 'direction', fallback='both')
+                
+                # Buy Settings
+                self.grid.buy_grid_distance = parser.getint('Grid', 'buy_grid_distance', fallback=200)
+                self.grid.buy_lot_size = parser.getfloat('Grid', 'buy_lot_size', fallback=0.01)
+                self.grid.buy_take_profit = parser.getint('Grid', 'buy_take_profit', fallback=100)
+                
+                # Sell Settings
+                self.grid.sell_grid_distance = parser.getint('Grid', 'sell_grid_distance', fallback=200)
+                self.grid.sell_lot_size = parser.getfloat('Grid', 'sell_lot_size', fallback=0.01)
+                self.grid.sell_take_profit = parser.getint('Grid', 'sell_take_profit', fallback=100)
+                
+                # Backward compatibility
                 self.grid.grid_distance = parser.getint('Grid', 'grid_distance', fallback=200)
-                self.grid.direction = parser.get('Grid', 'direction', fallback='buy')
                 self.grid.lot_size = parser.getfloat('Grid', 'lot_size', fallback=0.01)
                 self.grid.take_profit = parser.getint('Grid', 'take_profit', fallback=100)
             
@@ -73,11 +117,29 @@ class Config:
             if 'HG' in parser:
                 self.hg.enabled = parser.getboolean('HG', 'enabled', fallback=True)
                 self.hg.direction = parser.get('HG', 'direction', fallback='both')
+                
+                # Buy HG Settings
+                self.hg.buy_hg_distance = parser.getint('HG', 'buy_hg_distance', fallback=2000)
+                self.hg.buy_hg_sl_trigger = parser.getint('HG', 'buy_hg_sl_trigger', fallback=1000)
+                self.hg.buy_hg_multiplier = parser.getfloat('HG', 'buy_hg_multiplier', fallback=1.2)
+                self.hg.buy_hg_initial_lot = parser.getfloat('HG', 'buy_hg_initial_lot', fallback=0.01)
+                self.hg.buy_sl_buffer = parser.getint('HG', 'buy_sl_buffer', fallback=20)
+                self.hg.buy_max_hg_levels = parser.getint('HG', 'buy_max_hg_levels', fallback=10)
+                
+                # Sell HG Settings
+                self.hg.sell_hg_distance = parser.getint('HG', 'sell_hg_distance', fallback=2000)
+                self.hg.sell_hg_sl_trigger = parser.getint('HG', 'sell_hg_sl_trigger', fallback=1000)
+                self.hg.sell_hg_multiplier = parser.getfloat('HG', 'sell_hg_multiplier', fallback=1.2)
+                self.hg.sell_hg_initial_lot = parser.getfloat('HG', 'sell_hg_initial_lot', fallback=0.01)
+                self.hg.sell_sl_buffer = parser.getint('HG', 'sell_sl_buffer', fallback=20)
+                self.hg.sell_max_hg_levels = parser.getint('HG', 'sell_max_hg_levels', fallback=10)
+                
+                # Backward compatibility
+                self.hg.sl_buffer = parser.getint('HG', 'sl_buffer', fallback=20)
+                self.hg.max_hg_levels = parser.getint('HG', 'max_hg_levels', fallback=10)
                 self.hg.hg_distance = parser.getint('HG', 'hg_distance', fallback=2000)
                 self.hg.hg_sl_trigger = parser.getint('HG', 'hg_sl_trigger', fallback=1000)
-                self.hg.sl_buffer = parser.getint('HG', 'sl_buffer', fallback=20)
                 self.hg.hg_multiplier = parser.getfloat('HG', 'hg_multiplier', fallback=1.2)
-                self.hg.max_hg_levels = parser.getint('HG', 'max_hg_levels', fallback=10)
             
             # MT5 Settings
             if 'MT5' in parser:
@@ -100,8 +162,17 @@ class Config:
         
         # Grid Section
         parser['Grid'] = {
-            'grid_distance': str(self.grid.grid_distance),
             'direction': self.grid.direction,
+            # Buy Settings
+            'buy_grid_distance': str(self.grid.buy_grid_distance),
+            'buy_lot_size': str(self.grid.buy_lot_size),
+            'buy_take_profit': str(self.grid.buy_take_profit),
+            # Sell Settings
+            'sell_grid_distance': str(self.grid.sell_grid_distance),
+            'sell_lot_size': str(self.grid.sell_lot_size),
+            'sell_take_profit': str(self.grid.sell_take_profit),
+            # Backward compatibility
+            'grid_distance': str(self.grid.grid_distance),
             'lot_size': str(self.grid.lot_size),
             'take_profit': str(self.grid.take_profit)
         }
@@ -110,11 +181,26 @@ class Config:
         parser['HG'] = {
             'enabled': str(self.hg.enabled),
             'direction': self.hg.direction,
+            # Buy HG Settings
+            'buy_hg_distance': str(self.hg.buy_hg_distance),
+            'buy_hg_sl_trigger': str(self.hg.buy_hg_sl_trigger),
+            'buy_hg_multiplier': str(self.hg.buy_hg_multiplier),
+            'buy_hg_initial_lot': str(self.hg.buy_hg_initial_lot),
+            'buy_sl_buffer': str(self.hg.buy_sl_buffer),
+            'buy_max_hg_levels': str(self.hg.buy_max_hg_levels),
+            # Sell HG Settings
+            'sell_hg_distance': str(self.hg.sell_hg_distance),
+            'sell_hg_sl_trigger': str(self.hg.sell_hg_sl_trigger),
+            'sell_hg_multiplier': str(self.hg.sell_hg_multiplier),
+            'sell_hg_initial_lot': str(self.hg.sell_hg_initial_lot),
+            'sell_sl_buffer': str(self.hg.sell_sl_buffer),
+            'sell_max_hg_levels': str(self.hg.sell_max_hg_levels),
+            # Backward compatibility
+            'sl_buffer': str(self.hg.sl_buffer),
+            'max_hg_levels': str(self.hg.max_hg_levels),
             'hg_distance': str(self.hg.hg_distance),
             'hg_sl_trigger': str(self.hg.hg_sl_trigger),
-            'sl_buffer': str(self.hg.sl_buffer),
-            'hg_multiplier': str(self.hg.hg_multiplier),
-            'max_hg_levels': str(self.hg.max_hg_levels)
+            'hg_multiplier': str(self.hg.hg_multiplier)
         }
         
         # MT5 Section

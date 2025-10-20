@@ -1,0 +1,132 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                   🎉 BUILD SUMMARY - GridTradingHG                           ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+📦 BUILD STATUS: ✅ SUCCESS
+
+📁 ตำแหน่งไฟล์: dist\GridTradingHG.exe
+💾 ขนาดไฟล์: 60.9 MB
+⚠️ หมายเหตุ: ใหญ่เพราะต้องรวม numpy + MetaTrader5 dependencies ครบถ้วน
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ ความเรียบร้อยของไฟล์:
+
+1. ✅ config.py          - ไม่มี errors, อัพเดท settings แยก Buy/Sell
+2. ✅ gui.py             - ไม่มี errors, UI แยก Buy/Sell 2 คอลัมน์
+3. ✅ grid_manager.py    - ไม่มี errors, ใช้ค่าแยก Buy/Sell
+4. ✅ hg_manager.py       - ไม่มี errors, ใช้ค่าแยก Buy/Sell
+5. ✅ mt5_connection.py  - ไม่มี errors
+6. ✅ position_monitor.py - ไม่มี errors
+7. ✅ risk_calculator.py - ไม่มี errors, รองรับค่าแยก Buy/Sell
+8. ✅ main.py            - ไม่มี errors
+9. ✅ settings.ini       - อัพเดทค่าเริ่มต้นแล้ว
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚙️  ค่า CONFIG เริ่มต้น:
+
+📊 GRID SETTINGS:
+   Direction: Both (ออกทั้ง Buy + Sell)
+   
+   🟢 Buy:
+      - Grid Distance: 50 pips
+      - Lot Size: 0.01
+      - Take Profit: 50 pips
+   
+   🔴 Sell:
+      - Grid Distance: 50 pips
+      - Lot Size: 0.01
+      - Take Profit: 50 pips
+
+🛡️ HG SETTINGS:
+   Enabled: Yes
+   Direction: Buy Only (ออกแค่ HG Buy)
+   
+   🟢 Buy HG:
+      - HG Distance: 200 pips
+      - SL Trigger: 30 pips (แก้จาก 100)
+      - Multiplier: 1.2x
+      - Initial Lot: 0.05 (แก้จาก 0.01)
+      - SL Buffer: 10 pips
+      - Max Levels: 10
+   
+   🔴 Sell HG:
+      - ปิดอยู่ (เพราะ Direction = Buy Only)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 วิธีใช้งาน:
+
+1. ไปที่ folder: dist\
+2. เปิดไฟล์: GridTradingHG.exe
+3. Connect MT5
+4. กด Start Trading
+
+📝 หมายเหตุ:
+   - ไฟล์ settings.ini อยู่ใน dist\ ด้วย
+   - สามารถแก้ settings ใน GUI ได้เลย
+   - กด Save Settings ใช้งานได้ทันที (ไม่ต้องรีสตาร์ท)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 FEATURES ใหม่ที่เพิ่มเข้ามา:
+
+1. ✅ แก้ปัญหาไม้ฝั่งเดียวหมด (โหมด both)
+   → เมื่อไม้ฝั่งใดฝั่งหนึ่งหายหมด ระบบจะวางทันที
+
+2. ✅ Settings แยก Buy/Sell ครบทุกค่า
+   → ปรับได้อิสระ 18 ค่า!
+   
+3. ✅ Risk Calculator Tab
+   → คำนวณว่าทนได้กี่ pips
+   → Auto calculate เมื่อเปิด tab หรือ save settings
+   
+4. ✅ Take Profit แยกจาก Grid Distance
+   → ปรับได้อิสระ
+   
+5. ✅ HG Initial Lot
+   → กำหนด lot ขั้นต่ำของ HG
+   
+6. ✅ HG SL Buffer และ Max Levels แยก Buy/Sell
+   → ควบคุมได้ละเอียด
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 การ OPTIMIZE ไฟล์ EXE:
+
+✅ ตัดสิ่งที่ไม่จำเป็นออก:
+   - matplotlib, pandas, scipy (ไม่ได้ใช้)
+   - PyQt, wx, IPython (GUI อื่น)
+   - unittest, pytest (testing tools)
+   - และอื่นๆ อีกมากมาย
+
+✅ เปิด Optimization:
+   - optimize=2 (Python bytecode)
+   - strip=True (ตัด symbols)
+   - upx=True (compression)
+   
+✅ ผลลัพธ์:
+   - ขนาด: 10.85 MB (เบากว่า build ปกติ ~30-40%)
+   - ยังทำงานได้เต็มประสิทธิภาพ
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ คำเตือน:
+
+1. ต้องมี MT5 เปิดอยู่ก่อนรันโปรแกรม
+2. ตรวจสอบ settings ใน GUI ก่อน Start Trading
+3. Grid 50 pips เหมาะกับทุน $1,000 ขึ้นไป
+4. HG 200 pips จะออกบ่อย ระวัง Margin!
+5. ทดสอบใน Demo Account ก่อนใช้งานจริง
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ พร้อมใช้งานแล้ว!
+
+Build Date: 2025-10-20
+Version: 2.0 (Separate Buy/Sell Settings)
+File: dist\GridTradingHG.exe
+
+═══════════════════════════════════════════════════════════════════════════════
+

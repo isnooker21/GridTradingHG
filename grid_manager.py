@@ -20,6 +20,8 @@ class GridManager:
         self.placed_orders = {}  # เก็บ ticket และข้อมูล orders ที่วางไว้
         self.start_price = 0.0
         self.last_order_time = {}  # เก็บเวลาล่าสุดที่วางไม้แต่ละประเภท
+        self.placing_order_lock = False  # Lock เพื่อป้องกันการวางไม้พร้อมกัน
+        self.order_counter = 0  # นับจำนวนไม้ที่วางไปแล้วทั้งหมด (ไม่ซ้ำแน่นอน)
     
     def place_initial_orders(self, current_price: float):
         """
@@ -34,21 +36,17 @@ class GridManager:
         logger.info("Placing initial orders...")
         logger.info(f"Direction setting: {config.grid.direction}")
         
-        # คำนวณ TP (ใช้ค่า Take Profit ที่ตั้งไว้)
-        tp_distance = config.pips_to_price(config.grid.take_profit)
-        buy_tp = current_price + tp_distance
-        sell_tp = current_price - tp_distance
-        
-        logger.info(f"Grid Distance: {config.grid.grid_distance} pips | Take Profit: {config.grid.take_profit} pips")
-        
         orders_placed = 0
         
-        # วาง Buy order
+        # วาง Buy order (ใช้ค่า Buy)
         if config.grid.direction in ['buy', 'both']:
+            buy_tp_distance = config.pips_to_price(config.grid.buy_take_profit)
+            buy_tp = current_price + buy_tp_distance
+            
             comment = f"{config.mt5.comment_grid}_initial_buy"
             ticket = mt5_connection.place_order(
                 order_type='buy',
-                volume=config.grid.lot_size,
+                volume=config.grid.buy_lot_size,
                 tp=buy_tp,
                 comment=comment
             )
@@ -64,14 +62,17 @@ class GridManager:
                     'ticket': ticket
                 })
                 orders_placed += 1
-                logger.info(f"Initial BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {buy_tp:.2f} | Ticket: {ticket}")
+                logger.info(f"Initial BUY placed: {config.grid.buy_lot_size} lots at {current_price:.2f} | TP: {buy_tp:.2f} | Ticket: {ticket}")
         
-        # วาง Sell order
+        # วาง Sell order (ใช้ค่า Sell)
         if config.grid.direction in ['sell', 'both']:
+            sell_tp_distance = config.pips_to_price(config.grid.sell_take_profit)
+            sell_tp = current_price - sell_tp_distance
+            
             comment = f"{config.mt5.comment_grid}_initial_sell"
             ticket = mt5_connection.place_order(
                 order_type='sell',
-                volume=config.grid.lot_size,
+                volume=config.grid.sell_lot_size,
                 tp=sell_tp,
                 comment=comment
             )
@@ -87,9 +88,11 @@ class GridManager:
                     'ticket': ticket
                 })
                 orders_placed += 1
-                logger.info(f"Initial SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {sell_tp:.2f} | Ticket: {ticket}")
+                logger.info(f"Initial SELL placed: {config.grid.sell_lot_size} lots at {current_price:.2f} | TP: {sell_tp:.2f} | Ticket: {ticket}")
         
         logger.info(f"✓ Initial orders placed: {orders_placed} orders")
+        logger.info(f"Buy: Distance={config.grid.buy_grid_distance} pips, Lot={config.grid.buy_lot_size}, TP={config.grid.buy_take_profit} pips")
+        logger.info(f"Sell: Distance={config.grid.sell_grid_distance} pips, Lot={config.grid.sell_lot_size}, TP={config.grid.sell_take_profit} pips")
     
     def monitor_grid_positions(self):
         """
@@ -168,67 +171,129 @@ class GridManager:
     
     def place_new_buy_order(self, current_price: float):
         """
-        วาง Buy order ใหม่
+        วาง Buy order ใหม่ (ใช้ค่า Buy) พร้อมป้องกันการวางซ้ำ
         """
-        tp_distance = config.pips_to_price(config.grid.take_profit)
-        tp_price = current_price + tp_distance
+        # ป้องกันการวางพร้อมกัน (Lock)
+        if self.placing_order_lock:
+            logger.warning("⚠️ Order placement locked - preventing duplicate order")
+            return
         
-        # สร้าง level_key ที่ไม่ซ้ำ
-        buy_count = sum(1 for grid in self.grid_levels if grid['type'] == 'buy')
-        level_key = f"buy_{buy_count}"
-        
-        comment = f"{config.mt5.comment_grid}_{level_key}"
-        ticket = mt5_connection.place_order(
-            order_type='buy',
-            volume=config.grid.lot_size,
-            tp=tp_price,
-            comment=comment
-        )
-        
-        if ticket:
-            self.placed_orders[level_key] = ticket
-            self.grid_levels.append({
-                'level_key': level_key,
-                'price': current_price,
-                'type': 'buy',
-                'tp': tp_price,
-                'placed': True,
-                'ticket': ticket
-            })
+        try:
+            self.placing_order_lock = True
             
-            logger.info(f"New BUY placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+            # เช็คซ้ำอีกครั้งว่ามีไม้ใกล้เคียงหรือไม่ (ป้องกันการวางซ้ำ)
+            position_monitor.update_all_positions()
+            grid_positions = position_monitor.grid_positions
+            
+            buy_grid_distance_price = config.pips_to_price(config.grid.buy_grid_distance)
+            min_distance = buy_grid_distance_price * 0.3  # ลดเหลือ 30% เพื่อป้องกันเข้มงวดขึ้น
+            
+            for pos in grid_positions:
+                if pos['type'] == 'buy':
+                    distance = abs(pos['open_price'] - current_price)
+                    if distance < min_distance:
+                        logger.warning(f"⚠️ DUPLICATE PREVENTED: BUY order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
+                        return
+            
+            tp_distance = config.pips_to_price(config.grid.buy_take_profit)
+            tp_price = current_price + tp_distance
+            
+            # สร้าง level_key ที่ไม่ซ้ำแน่นอน (ใช้ counter)
+            self.order_counter += 1
+            level_key = f"buy_{self.order_counter}"
+            
+            # เช็คว่า level_key ซ้ำหรือไม่
+            while level_key in self.placed_orders:
+                self.order_counter += 1
+                level_key = f"buy_{self.order_counter}"
+            
+            comment = f"{config.mt5.comment_grid}_{level_key}"
+            
+            # วาง order
+            ticket = mt5_connection.place_order(
+                order_type='buy',
+                volume=config.grid.buy_lot_size,
+                tp=tp_price,
+                comment=comment
+            )
+            
+            if ticket:
+                self.placed_orders[level_key] = ticket
+                self.grid_levels.append({
+                    'level_key': level_key,
+                    'price': current_price,
+                    'type': 'buy',
+                    'tp': tp_price,
+                    'placed': True,
+                    'ticket': ticket
+                })
+                
+                logger.info(f"✓ New BUY placed: {config.grid.buy_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
+        finally:
+            self.placing_order_lock = False
     
     def place_new_sell_order(self, current_price: float):
         """
-        วาง Sell order ใหม่
+        วาง Sell order ใหม่ (ใช้ค่า Sell) พร้อมป้องกันการวางซ้ำ
         """
-        tp_distance = config.pips_to_price(config.grid.take_profit)
-        tp_price = current_price - tp_distance
+        # ป้องกันการวางพร้อมกัน (Lock)
+        if self.placing_order_lock:
+            logger.warning("⚠️ Order placement locked - preventing duplicate order")
+            return
         
-        # สร้าง level_key ที่ไม่ซ้ำ
-        sell_count = sum(1 for grid in self.grid_levels if grid['type'] == 'sell')
-        level_key = f"sell_{sell_count}"
-        
-        comment = f"{config.mt5.comment_grid}_{level_key}"
-        ticket = mt5_connection.place_order(
-            order_type='sell',
-            volume=config.grid.lot_size,
-            tp=tp_price,
-            comment=comment
-        )
-        
-        if ticket:
-            self.placed_orders[level_key] = ticket
-            self.grid_levels.append({
-                'level_key': level_key,
-                'price': current_price,
-                'type': 'sell',
-                'tp': tp_price,
-                'placed': True,
-                'ticket': ticket
-            })
+        try:
+            self.placing_order_lock = True
             
-            logger.info(f"New SELL placed: {config.grid.lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket}")
+            # เช็คซ้ำอีกครั้งว่ามีไม้ใกล้เคียงหรือไม่ (ป้องกันการวางซ้ำ)
+            position_monitor.update_all_positions()
+            grid_positions = position_monitor.grid_positions
+            
+            sell_grid_distance_price = config.pips_to_price(config.grid.sell_grid_distance)
+            min_distance = sell_grid_distance_price * 0.3  # ลดเหลือ 30% เพื่อป้องกันเข้มงวดขึ้น
+            
+            for pos in grid_positions:
+                if pos['type'] == 'sell':
+                    distance = abs(pos['open_price'] - current_price)
+                    if distance < min_distance:
+                        logger.warning(f"⚠️ DUPLICATE PREVENTED: SELL order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
+                        return
+            
+            tp_distance = config.pips_to_price(config.grid.sell_take_profit)
+            tp_price = current_price - tp_distance
+            
+            # สร้าง level_key ที่ไม่ซ้ำแน่นอน (ใช้ counter)
+            self.order_counter += 1
+            level_key = f"sell_{self.order_counter}"
+            
+            # เช็คว่า level_key ซ้ำหรือไม่
+            while level_key in self.placed_orders:
+                self.order_counter += 1
+                level_key = f"sell_{self.order_counter}"
+            
+            comment = f"{config.mt5.comment_grid}_{level_key}"
+            
+            # วาง order
+            ticket = mt5_connection.place_order(
+                order_type='sell',
+                volume=config.grid.sell_lot_size,
+                tp=tp_price,
+                comment=comment
+            )
+            
+            if ticket:
+                self.placed_orders[level_key] = ticket
+                self.grid_levels.append({
+                    'level_key': level_key,
+                    'price': current_price,
+                    'type': 'sell',
+                    'tp': tp_price,
+                    'placed': True,
+                    'ticket': ticket
+                })
+                
+                logger.info(f"✓ New SELL placed: {config.grid.sell_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
+        finally:
+            self.placing_order_lock = False
     
     
     def update_grid_status(self):
@@ -296,7 +361,10 @@ class GridManager:
             return
         
         current_price = price_info['bid']
-        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
+        
+        # ใช้ระยะห่างแยก Buy/Sell
+        buy_grid_distance_price = config.pips_to_price(config.grid.buy_grid_distance)
+        sell_grid_distance_price = config.pips_to_price(config.grid.sell_grid_distance)
         
         # อัพเดท positions
         position_monitor.update_all_positions()
@@ -319,7 +387,7 @@ class GridManager:
                 if latest_sell_price is None or pos['open_price'] < latest_sell_price:
                     latest_sell_price = pos['open_price']
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Buy
+        # ตรวจสอบเงื่อนไขการวางไม้ Buy (ใช้ระยะห่าง Buy)
         if config.grid.direction in ['buy', 'both']:
             should_place_buy = False
             
@@ -328,8 +396,8 @@ class GridManager:
                 should_place_buy = True
                 logger.info(f"🔄 [BOTH Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
             
-            # เงื่อนไขปกติ: ราคาลงห่างจาก latest_sell >= Grid Distance
-            elif latest_sell_price and current_price <= (latest_sell_price - grid_distance_price):
+            # เงื่อนไขปกติ: ราคาลงห่างจาก latest_sell >= Sell Grid Distance
+            elif latest_sell_price and current_price <= (latest_sell_price - sell_grid_distance_price):
                 should_place_buy = True
                 logger.info(f"Grid Distance triggered (ราคาลง): New BUY at {current_price:.2f}")
             
@@ -337,7 +405,7 @@ class GridManager:
             if should_place_buy:
                 # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_buy = False
-                nearby_distance = grid_distance_price * 0.5
+                nearby_distance = buy_grid_distance_price * 0.5
                 
                 for pos in grid_positions:
                     if pos['type'] == 'buy' and abs(pos['open_price'] - current_price) < nearby_distance:
@@ -349,7 +417,7 @@ class GridManager:
                 else:
                     logger.info(f"⚠ Skipped BUY - nearby order exists at {current_price:.2f}")
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Sell
+        # ตรวจสอบเงื่อนไขการวางไม้ Sell (ใช้ระยะห่าง Sell)
         if config.grid.direction in ['sell', 'both']:
             should_place_sell = False
             
@@ -358,8 +426,8 @@ class GridManager:
                 should_place_sell = True
                 logger.info(f"🔄 [BOTH Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
             
-            # เงื่อนไขปกติ: ราคาขึ้นห่างจาก latest_buy >= Grid Distance
-            elif latest_buy_price and current_price >= (latest_buy_price + grid_distance_price):
+            # เงื่อนไขปกติ: ราคาขึ้นห่างจาก latest_buy >= Buy Grid Distance
+            elif latest_buy_price and current_price >= (latest_buy_price + buy_grid_distance_price):
                 should_place_sell = True
                 logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL at {current_price:.2f}")
             
@@ -367,7 +435,7 @@ class GridManager:
             if should_place_sell:
                 # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_sell = False
-                nearby_distance = grid_distance_price * 0.5
+                nearby_distance = sell_grid_distance_price * 0.5
                 
                 for pos in grid_positions:
                     if pos['type'] == 'sell' and abs(pos['open_price'] - current_price) < nearby_distance:
@@ -397,7 +465,9 @@ class GridManager:
         if config.grid.direction != 'both':
             return
         
-        grid_distance_price = config.pips_to_price(config.grid.grid_distance)
+        # ใช้ระยะห่างแยก Buy/Sell
+        buy_grid_distance_price = config.pips_to_price(config.grid.buy_grid_distance)
+        sell_grid_distance_price = config.pips_to_price(config.grid.sell_grid_distance)
         
         # อัพเดท positions เพื่อดูกำไร/ขาดทุน
         position_monitor.update_all_positions()
@@ -413,13 +483,13 @@ class GridManager:
                 if latest_buy is None or pos['open_price'] < latest_buy['open_price']:
                     latest_buy = pos
         
-        # ตรวจสอบว่าควรออก Buy เพิ่มไหม
+        # ตรวจสอบว่าควรออก Buy เพิ่มไหม (ใช้ระยะห่าง Buy)
         if latest_buy:
             distance_from_latest = config.price_to_pips(latest_buy['open_price'] - current_price)
             
-            if distance_from_latest >= config.grid.grid_distance:
+            if distance_from_latest >= config.grid.buy_grid_distance:
                 # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
-                nearby_distance = grid_distance_price * 0.5
+                nearby_distance = buy_grid_distance_price * 0.5
                 has_nearby_buy = False
                 
                 for pos in grid_positions:
@@ -441,13 +511,13 @@ class GridManager:
                 if latest_sell is None or pos['open_price'] > latest_sell['open_price']:
                     latest_sell = pos
         
-        # ตรวจสอบว่าควรออก Sell เพิ่มไหม
+        # ตรวจสอบว่าควรออก Sell เพิ่มไหม (ใช้ระยะห่าง Sell)
         if latest_sell:
             distance_from_latest = config.price_to_pips(current_price - latest_sell['open_price'])
             
-            if distance_from_latest >= config.grid.grid_distance:
+            if distance_from_latest >= config.grid.sell_grid_distance:
                 # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
-                nearby_distance = grid_distance_price * 0.5
+                nearby_distance = sell_grid_distance_price * 0.5
                 has_nearby_sell = False
                 
                 for pos in grid_positions:
@@ -532,8 +602,9 @@ class GridManager:
             logger.info(f"Found {restored_count} existing positions - continuing from existing")
         
         logger.info(f"Grid Trading started at {self.start_price:.2f}")
-        logger.info(f"Direction: {config.grid.direction}, Distance: {config.grid.grid_distance} pips")
-        logger.info(f"Lot Size: {config.grid.lot_size}, Take Profit: {config.grid.take_profit} pips")
+        logger.info(f"Direction: {config.grid.direction}")
+        logger.info(f"Buy:  Distance={config.grid.buy_grid_distance} pips, Lot={config.grid.buy_lot_size}, TP={config.grid.buy_take_profit} pips")
+        logger.info(f"Sell: Distance={config.grid.sell_grid_distance} pips, Lot={config.grid.sell_lot_size}, TP={config.grid.sell_take_profit} pips")
         
         return True
     
