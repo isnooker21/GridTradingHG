@@ -23,7 +23,6 @@ class HGManager:
         
         # Smart HG cache
         self.smart_zones_cache = {'support': [], 'resistance': [], 'timestamp': 0}
-        self.atr_cache = {'value': 0.0, 'timestamp': 0}
         
     def check_hg_trigger(self, current_price: float) -> List[Dict]:
         """
@@ -265,132 +264,107 @@ class HGManager:
     # SMART HG FUNCTIONS (โหมดใหม่)
     # ========================================
     
-    def calculate_atr(self, period: int = 14) -> float:
+    def calculate_zone_strength(self, price: float) -> Dict:
         """
-        คำนวณ ATR (Average True Range) สำหรับวัด Volatility
-        ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection เท่านั้น
+        คำนวณ Zone Strength Score สำหรับราคาที่กำหนด
         
         Args:
-            period: จำนวน bars สำหรับคำนวณ (default: 14)
+            price: ราคาที่ต้องการตรวจสอบ
             
         Returns:
-            ATR value (pips) หรือ None ถ้าไม่สามารถคำนวณได้
+            {
+                'strength': 0-4,
+                'details': {
+                    'sr_zone': bool,
+                    'round_number': bool,
+                    'local_high_low': bool,
+                    'fibonacci': bool
+                },
+                'lot_multiplier': float
+            }
         """
         try:
-            import time
-            
-            # ใช้ cache ถ้ายังไม่หมดอายุ (5 นาที)
-            current_time = time.time()
-            if current_time - self.atr_cache['timestamp'] < 300:
-                logger.debug(f"Using cached ATR: {self.atr_cache['value']:.1f} pips")
-                return self.atr_cache['value']
-            
-            # ตรวจสอบการเชื่อมต่อ MT5 (ใช้วิธีเดียวกับระบบเก่า)
+            # ตรวจสอบการเชื่อมต่อ MT5
             if not mt5_connection.connected:
                 logger.warning("MT5 not connected - Smart HG requires MT5 connection")
-                return None
+                return {'strength': 0, 'details': {}, 'lot_multiplier': 1.0}
             
-            # ใช้วิธีเดียวกับระบบเก่า - ดึงราคาปัจจุบันก่อน
+            # ดึงราคาปัจจุบัน
             price_info = mt5_connection.get_current_price()
             if not price_info:
                 logger.warning("Cannot get current price - Smart HG requires price data")
-                return None
+                return {'strength': 0, 'details': {}, 'lot_multiplier': 1.0}
             
-            logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with ATR calculation")
+            strength = 0
+            details = {
+                'sr_zone': False,
+                'round_number': False,
+                'local_high_low': False,
+                'fibonacci': False
+            }
             
-            # ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection ทั้งหมด
-            # หา symbol ที่ถูกต้องก่อน
-            try:
-                import MetaTrader5 as mt5
-                
-                # ใช้ฟังก์ชันเดียวกับระบบเก่า - หา symbol ที่ถูกต้อง
-                correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
-                if not correct_symbol:
-                    logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
-                    return None
-                
-                logger.debug(f"Using correct symbol: {correct_symbol}")
-                
-                # ลองดึงข้อมูลน้อยๆ ก่อน
-                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_H1, 0, 20)
-                logger.debug(f"H1 rates result: {rates is not None}")
-                
-                if rates is None:
-                    logger.warning("Cannot get rates from MT5 - trying different timeframe")
-                    # ลอง timeframe อื่น
-                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M15, 0, 20)
-                    logger.debug(f"M15 rates result: {rates is not None}")
-                    
-                if rates is None:
-                    logger.warning("Cannot get rates from MT5 - trying M5 timeframe")
-                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M5, 0, 20)
-                    logger.debug(f"M5 rates result: {rates is not None}")
-                
-                if rates is None:
-                    logger.warning("Cannot get rates from MT5 - Smart HG requires historical data")
-                    return None
-                
-                logger.debug(f"Got {len(rates)} bars from MT5")
-                
-                if len(rates) < period + 1:
-                    logger.warning(f"Insufficient data: {len(rates)} bars (need {period + 1}) - Smart HG requires more data")
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"Error getting rates from MT5: {e}")
-                return None
+            # 1. ตรวจสอบ Support/Resistance Zones
+            zones = self.find_smart_hg_zones()
+            zone_tolerance = 10.0  # 10 ดอลลาร์
             
-            # ตรวจสอบข้อมูลราคา
-            valid_rates = []
-            for rate in rates:
-                if (rate['high'] > 0 and rate['low'] > 0 and rate['close'] > 0 and 
-                    rate['high'] >= rate['low'] and rate['close'] >= rate['low']):
-                    valid_rates.append(rate)
+            for support in zones['support_zones']:
+                if abs(price - support) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1
+                    break
             
-            if len(valid_rates) < period + 1:
-                logger.warning(f"Invalid price data: {len(valid_rates)} valid bars (need {period + 1}) - Smart HG requires valid data")
-                return None
+            for resistance in zones['resistance_zones']:
+                if abs(price - resistance) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1
+                    break
             
-            # ใช้ข้อมูลที่ valid เท่านั้น
-            rates = valid_rates[:period + 1]
+            # 2. ตรวจสอบ Round Numbers
+            round_numbers = [2600, 2650, 2700, 2750, 2800, 2850, 2900]
+            for round_num in round_numbers:
+                if abs(price - round_num) <= zone_tolerance:
+                    details['round_number'] = True
+                    strength += 1
+                    break
             
-            # คำนวณ True Range สำหรับแต่ละ bar
-            true_ranges = []
-            for i in range(1, len(rates)):
-                high = rates[i]['high']
-                low = rates[i]['low']
-                prev_close = rates[i-1]['close']
-                
-                tr = max(
-                    high - low,
-                    abs(high - prev_close),
-                    abs(low - prev_close)
-                )
-                true_ranges.append(tr)
+            # 3. ตรวจสอบ Local Highs/Lows
+            local_levels = self.find_local_highs_lows()
+            for level in local_levels:
+                if abs(price - level) <= zone_tolerance:
+                    details['local_high_low'] = True
+                    strength += 1
+                    break
             
-            if not true_ranges:
-                logger.warning("No valid True Range calculated - Smart HG requires valid price data")
-                return None
+            # 4. ตรวจสอบ Fibonacci Levels
+            fib_levels = self.calculate_fibonacci_levels()
+            for level in fib_levels:
+                if abs(price - level) <= zone_tolerance:
+                    details['fibonacci'] = True
+                    strength += 1
+                    break
             
-            # คำนวณ ATR (average ของ True Range)
-            atr = sum(true_ranges) / len(true_ranges)
-            atr_pips = config.price_to_pips(atr)
+            # คำนวณ Lot Multiplier
+            if strength >= 4:
+                lot_multiplier = 2.0  # Zone แข็งแรงมาก
+            elif strength >= 3:
+                lot_multiplier = 1.5  # Zone แข็งแรง
+            elif strength >= 2:
+                lot_multiplier = 1.2  # Zone ปานกลาง
+            else:
+                lot_multiplier = 1.0  # Zone อ่อนแอ
             
-            # ตรวจสอบ ATR ที่คำนวณได้
-            if atr_pips <= 0 or atr_pips > 1000:  # ATR ควรอยู่ในช่วง 1-1000 pips
-                logger.warning(f"Invalid ATR calculated: {atr_pips:.1f} pips - Smart HG requires valid ATR")
-                return None
+            logger.debug(f"Zone Strength at {price:.2f}: {strength}/4 (Multiplier: {lot_multiplier}x)")
+            logger.debug(f"Details: SR={details['sr_zone']}, Round={details['round_number']}, Local={details['local_high_low']}, Fib={details['fibonacci']}")
             
-            # บันทึก cache
-            self.atr_cache = {'value': atr_pips, 'timestamp': current_time}
-            
-            logger.info(f"✅ ATR calculated successfully: {atr_pips:.1f} pips (from {len(rates)} bars)")
-            return atr_pips
+            return {
+                'strength': strength,
+                'details': details,
+                'lot_multiplier': lot_multiplier
+            }
             
         except Exception as e:
-            logger.error(f"Error calculating ATR: {e}")
-            logger.warning("Smart HG requires ATR calculation - cannot proceed")
-            return None
+            logger.error(f"Error calculating zone strength: {e}")
+            return {'strength': 0, 'details': {}, 'lot_multiplier': 1.0}
     
     def cluster_price_zones(self, prices: List[float], tolerance: float = 10.0) -> List[float]:
         """
@@ -422,6 +396,137 @@ class HGManager:
         clusters.append(sum(current_cluster) / len(current_cluster))
         
         return clusters
+    
+    def find_local_highs_lows(self, lookback_bars: int = 50) -> List[float]:
+        """
+        หา Local Highs และ Lows จากราคาในอดีต
+        
+        Args:
+            lookback_bars: จำนวน bars ที่ต้องการดู
+            
+        Returns:
+            รายการราคา Local Highs และ Lows
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # หา symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if not correct_symbol:
+                logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                return []
+            
+            # ดึงข้อมูลราคา
+            rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_H1, 0, lookback_bars)
+            
+            if rates is None:
+                # ลอง timeframe อื่น
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M15, 0, lookback_bars)
+            
+            if rates is None:
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M5, 0, lookback_bars)
+            
+            if rates is None or len(rates) < 10:
+                logger.warning("Cannot get rates for local highs/lows detection")
+                return []
+            
+            # หา Local Highs และ Lows
+            local_levels = []
+            
+            for i in range(2, len(rates) - 2):
+                current_high = rates[i]['high']
+                current_low = rates[i]['low']
+                
+                # ตรวจสอบ Local High (สูงกว่าทุก bar ใน 2 bars ก่อนและหลัง)
+                is_local_high = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['high'] >= current_high:
+                        is_local_high = False
+                        break
+                
+                if is_local_high:
+                    local_levels.append(current_high)
+                
+                # ตรวจสอบ Local Low (ต่ำกว่าทุก bar ใน 2 bars ก่อนและหลัง)
+                is_local_low = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['low'] <= current_low:
+                        is_local_low = False
+                        break
+                
+                if is_local_low:
+                    local_levels.append(current_low)
+            
+            # รวมราคาที่ใกล้กัน
+            local_levels = self.cluster_price_zones(local_levels, tolerance=15.0)
+            
+            logger.debug(f"Found {len(local_levels)} local highs/lows: {[f'{l:.1f}' for l in local_levels[:5]]}")
+            
+            return local_levels
+            
+        except Exception as e:
+            logger.error(f"Error finding local highs/lows: {e}")
+            return []
+    
+    def calculate_fibonacci_levels(self) -> List[float]:
+        """
+        คำนวณ Fibonacci Levels จากราคาในอดีต
+        
+        Returns:
+            รายการราคา Fibonacci Levels
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # หา symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if not correct_symbol:
+                logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                return []
+            
+            # ดึงข้อมูลราคา 100 bars
+            rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_H1, 0, 100)
+            
+            if rates is None:
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M15, 0, 100)
+            
+            if rates is None:
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M5, 0, 100)
+            
+            if rates is None or len(rates) < 20:
+                logger.warning("Cannot get rates for fibonacci calculation")
+                return []
+            
+            # หา High และ Low ใน 100 bars
+            highs = [r['high'] for r in rates]
+            lows = [r['low'] for r in rates]
+            
+            swing_high = max(highs)
+            swing_low = min(lows)
+            
+            # คำนวณ Fibonacci Levels
+            fib_range = swing_high - swing_low
+            fib_levels = []
+            
+            # Fibonacci ratios
+            fib_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]
+            
+            for ratio in fib_ratios:
+                # Retracement levels
+                retracement = swing_high - (fib_range * ratio)
+                fib_levels.append(retracement)
+                
+                # Extension levels
+                extension = swing_low + (fib_range * ratio)
+                fib_levels.append(extension)
+            
+            logger.debug(f"Fibonacci levels: {[f'{l:.1f}' for l in fib_levels[:5]]}")
+            
+            return fib_levels
+            
+        except Exception as e:
+            logger.error(f"Error calculating fibonacci levels: {e}")
+            return []
     
     def find_smart_hg_zones(self, lookback_bars: int = 100) -> Dict:
         """
@@ -603,13 +708,8 @@ class HGManager:
                 'sell_distance': 250
             }
         """
-        # 1. คำนวณ ATR (Volatility)
-        atr = self.calculate_atr(period=14)
-        
-        # ถ้า ATR ไม่ได้ → Smart HG ไม่ทำงาน
-        if atr is None:
-            logger.warning("Cannot calculate ATR - Smart HG disabled")
-            return {'buy_distance': 0, 'sell_distance': 0}
+        # 1. ใช้ระยะห่างคงที่ 200 pips (แทน ATR)
+        base_distance = 200  # pips
         
         # 2. เช็ค Grid Exposure
         exposure = position_monitor.get_net_grid_exposure()
@@ -621,9 +721,7 @@ class HGManager:
         balance = account_info['balance'] if account_info else 10000
         drawdown_percent = (total_pnl / balance) * 100 if balance > 0 else 0
         
-        # 4. คำนวณ Base Distance
-        # Base = ATR × 7 (ปรับได้)
-        base_distance = atr * 7
+        # 4. ใช้ Base Distance ที่กำหนดไว้แล้ว
         
         # 5. ปรับตาม Exposure (ยิ่ง Exposure สูง ยิ่งเข้าไว)
         exposure_factor = 1.0
@@ -648,11 +746,10 @@ class HGManager:
         # 7. คำนวณ Final Distance
         final_distance = base_distance * exposure_factor * drawdown_factor
         
-        # จำกัดช่วง (50-500 pips)
-        final_distance = max(50, min(500, final_distance))
+        # จำกัดช่วง (100-300 pips)
+        final_distance = max(100, min(300, final_distance))
         
         logger.info(f"Smart HG Distance Calculation:")
-        logger.info(f"  - ATR: {atr:.0f} pips")
         logger.info(f"  - Base: {base_distance:.0f} pips")
         logger.info(f"  - Exposure Factor: {exposure_factor:.2f}")
         logger.info(f"  - Drawdown Factor: {drawdown_factor:.2f}")
@@ -699,37 +796,21 @@ class HGManager:
                 logger.debug(f"HG SELL: Not far enough ({config.price_to_pips(price_diff):.0f} < {distances['sell_distance']:.0f} pips)")
                 return False
         
-        # 3. หา Smart Zones
-        zones = self.find_smart_hg_zones()
+        # 3. คำนวณ Zone Strength
+        zone_strength = self.calculate_zone_strength(current_price)
         
-        # ถ้าไม่มี zones → Smart HG ไม่ทำงาน
-        if not zones['support_zones'] and not zones['resistance_zones']:
-            logger.debug("No Smart Zones found - Smart HG disabled")
+        # ถ้า Zone Strength = 0 → Smart HG ไม่ทำงาน
+        if zone_strength['strength'] == 0:
+            logger.debug("No Zone Strength found - Smart HG disabled")
             return False
         
-        # 4. เช็คว่าราคาปัจจุบันอยู่ใน Zone หรือไม่
-        zone_tolerance = 10.0  # ห่างจาก zone ไม่เกิน 10 ดอลลาร์
+        # 4. เข้า HG เฉพาะเมื่อ Zone Strength >= 2
+        if zone_strength['strength'] >= 2:
+            logger.info(f"✅ SMART HG {hg_type.upper()} at Zone Strength {zone_strength['strength']}/4 (current: {current_price:.2f})")
+            logger.info(f"   Details: SR={zone_strength['details']['sr_zone']}, Round={zone_strength['details']['round_number']}, Local={zone_strength['details']['local_high_low']}, Fib={zone_strength['details']['fibonacci']}")
+            return True
         
-        if hg_type == 'buy':
-            # HG Buy → เข้าที่ Support
-            for support in zones['support_zones']:
-                if abs(current_price - support) <= zone_tolerance:
-                    logger.info(f"✅ SMART HG BUY at Support Zone: {support:.1f} (current: {current_price:.2f})")
-                    return True
-            
-            logger.debug(f"⚠️ HG BUY skipped: Not near any Support zone")
-            return False
-        
-        elif hg_type == 'sell':
-            # HG Sell → เข้าที่ Resistance
-            for resistance in zones['resistance_zones']:
-                if abs(current_price - resistance) <= zone_tolerance:
-                    logger.info(f"✅ SMART HG SELL at Resistance Zone: {resistance:.1f} (current: {current_price:.2f})")
-                    return True
-            
-            logger.debug(f"⚠️ HG SELL skipped: Not near any Resistance zone")
-            return False
-        
+        logger.debug(f"⚠️ HG {hg_type.upper()} skipped: Zone Strength too low ({zone_strength['strength']}/4)")
         return False
     
     def calculate_grid_average_price(self, order_type: str) -> float:
@@ -810,16 +891,25 @@ class HGManager:
             drawdown_multiplier = 1.5
             logger.info(f"🔴 High Drawdown {current_drawdown_percent:.1f}% → Increase HG by 50%")
         
-        # 6. คำนวณ Final Lot
-        final_lot = calculated_lot * drawdown_multiplier
+        # 6. คำนวณ Zone Strength Multiplier
+        price_info = mt5_connection.get_current_price()
+        current_price = price_info['bid'] if price_info else 2650.0
+        zone_strength = self.calculate_zone_strength(current_price)
+        zone_multiplier = zone_strength['lot_multiplier']
+        
+        # 7. คำนวณ Final Lot
+        final_lot = calculated_lot * drawdown_multiplier * zone_multiplier
         final_lot = max(initial_lot, final_lot)  # อย่างน้อยเท่ากับ initial lot
         final_lot = min(final_lot, max_lot_from_risk)  # ไม่เกิน risk limit
         final_lot = round(final_lot, 2)
         
-        # 7. Log การคำนวณ
+        # 8. Log การคำนวณ
         logger.info(f"Smart HG Lot Calculation ({hg_type.upper()}):")
         logger.info(f"  - Net Volume: {net_volume:.2f}")
         logger.info(f"  - Base Lot: {calculated_lot:.2f} (Net × {base_multiplier})")
+        logger.info(f"  - Zone Strength: {zone_strength['strength']}/4 (Multiplier: {zone_multiplier}x)")
+        logger.info(f"  - Drawdown: {current_drawdown_percent:.1f}% (Multiplier: {drawdown_multiplier}x)")
+        logger.info(f"  - Final Lot: {final_lot:.2f}")
         logger.info(f"  - Drawdown Multiplier: {drawdown_multiplier:.2f}")
         logger.info(f"  - Max from Risk: {max_lot_from_risk:.2f}")
         logger.info(f"  - Final Lot: {final_lot:.2f}")
@@ -978,7 +1068,7 @@ class HGManager:
         # ตรวจสอบว่ามี HG ที่ต้องวางหรือไม่ (เลือกโหมด)
         if config.hg.mode == 'smart':
             # เช็คว่า Smart HG ทำงานได้หรือไม่
-            logger.debug("🧠 Smart HG Mode - checking ATR calculation...")
+            logger.debug("🧠 Smart HG Mode - checking Zone Strength calculation...")
             logger.debug(f"MT5 Connected: {mt5_connection.connected}")
             logger.debug(f"Symbol: {config.mt5.symbol}")
             
@@ -996,12 +1086,13 @@ class HGManager:
             else:
                 logger.warning(f"❌ Cannot find correct symbol for {config.mt5.symbol}")
             
-            atr = self.calculate_atr()
-            if atr is None:
-                logger.warning("🧠 Smart HG Mode selected but ATR calculation failed - switching to Classic Mode")
+            # ทดสอบ Zone Strength
+            zone_strength = self.calculate_zone_strength(current_price)
+            if zone_strength['strength'] == 0:
+                logger.warning("🧠 Smart HG Mode selected but no Zone Strength found - switching to Classic Mode")
                 triggers = self.check_hg_trigger(current_price)
             else:
-                logger.info(f"🧠 Using SMART HG Mode (ATR: {atr:.1f} pips)")
+                logger.info(f"🧠 Using SMART HG Mode (Zone Strength: {zone_strength['strength']}/4)")
                 triggers = self.check_hg_trigger_smart(current_price)
         else:
             logger.debug(f"📌 Using CLASSIC HG Mode")
