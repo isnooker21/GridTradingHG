@@ -282,14 +282,47 @@ class HGManager:
             # ใช้ cache ถ้ายังไม่หมดอายุ (5 นาที)
             current_time = time.time()
             if current_time - self.atr_cache['timestamp'] < 300:
+                logger.debug(f"Using cached ATR: {self.atr_cache['value']:.1f} pips")
                 return self.atr_cache['value']
             
-            # ดึงราคาย้อนหลัง (H1 timeframe)
-            rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, period + 1)
+            # ตรวจสอบการเชื่อมต่อ MT5 (ใช้วิธีเดียวกับระบบเก่า)
+            if not mt5_connection.connected:
+                logger.warning("MT5 not connected - Smart HG requires MT5 connection")
+                return None
             
-            if rates is None or len(rates) < period + 1:
-                logger.warning(f"Cannot calculate ATR: insufficient data")
-                return 30.0  # ค่า default
+            # ใช้วิธีเดียวกับระบบเก่า - ดึงราคาปัจจุบันก่อน
+            price_info = mt5_connection.get_current_price()
+            if not price_info:
+                logger.warning("Cannot get current price - Smart HG requires price data")
+                return None
+            
+            logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with ATR calculation")
+            
+            # ดึงราคาย้อนหลัง (H1 timeframe) - เพิ่มจำนวน bars
+            required_bars = period + 5  # เพิ่ม buffer
+            rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, required_bars)
+            
+            if rates is None:
+                logger.warning("Cannot get rates from MT5 - Smart HG requires historical data")
+                return None
+            
+            if len(rates) < period + 1:
+                logger.warning(f"Insufficient data: {len(rates)} bars (need {period + 1}) - Smart HG requires more data")
+                return None
+            
+            # ตรวจสอบข้อมูลราคา
+            valid_rates = []
+            for rate in rates:
+                if (rate['high'] > 0 and rate['low'] > 0 and rate['close'] > 0 and 
+                    rate['high'] >= rate['low'] and rate['close'] >= rate['low']):
+                    valid_rates.append(rate)
+            
+            if len(valid_rates) < period + 1:
+                logger.warning(f"Invalid price data: {len(valid_rates)} valid bars (need {period + 1}) - Smart HG requires valid data")
+                return None
+            
+            # ใช้ข้อมูลที่ valid เท่านั้น
+            rates = valid_rates[:period + 1]
             
             # คำนวณ True Range สำหรับแต่ละ bar
             true_ranges = []
@@ -305,19 +338,29 @@ class HGManager:
                 )
                 true_ranges.append(tr)
             
+            if not true_ranges:
+                logger.warning("No valid True Range calculated - Smart HG requires valid price data")
+                return None
+            
             # คำนวณ ATR (average ของ True Range)
             atr = sum(true_ranges) / len(true_ranges)
             atr_pips = config.price_to_pips(atr)
             
+            # ตรวจสอบ ATR ที่คำนวณได้
+            if atr_pips <= 0 or atr_pips > 1000:  # ATR ควรอยู่ในช่วง 1-1000 pips
+                logger.warning(f"Invalid ATR calculated: {atr_pips:.1f} pips - Smart HG requires valid ATR")
+                return None
+            
             # บันทึก cache
             self.atr_cache = {'value': atr_pips, 'timestamp': current_time}
             
-            logger.debug(f"ATR calculated: {atr_pips:.1f} pips")
+            logger.info(f"✅ ATR calculated successfully: {atr_pips:.1f} pips (from {len(rates)} bars)")
             return atr_pips
             
         except Exception as e:
             logger.error(f"Error calculating ATR: {e}")
-            return 30.0  # ค่า default
+            logger.warning("Smart HG requires ATR calculation - cannot proceed")
+            return None
     
     def cluster_price_zones(self, prices: List[float], tolerance: float = 10.0) -> List[float]:
         """
@@ -374,18 +417,45 @@ class HGManager:
             # ใช้ cache ถ้ายังไม่หมดอายุ (10 นาที)
             current_time = time.time()
             if current_time - self.smart_zones_cache['timestamp'] < 600:
+                logger.debug("Using cached Smart Zones")
                 return {
                     'support_zones': self.smart_zones_cache['support'],
                     'resistance_zones': self.smart_zones_cache['resistance']
                 }
             
+            # ตรวจสอบการเชื่อมต่อ MT5 (ใช้วิธีเดียวกับระบบเก่า)
+            if not mt5_connection.connected:
+                logger.warning("MT5 not connected - Smart HG requires MT5 connection")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            # ใช้วิธีเดียวกับระบบเก่า - ดึงราคาปัจจุบันก่อน
+            price_info = mt5_connection.get_current_price()
+            if not price_info:
+                logger.warning("Cannot get current price - Smart HG requires price data")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with zone detection")
+            
             # ดึงราคาย้อนหลัง
             rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, lookback_bars)
             
             if rates is None or len(rates) == 0:
-                logger.warning("Cannot get historical data for zone detection")
+                logger.warning("Cannot get historical data for zone detection - Smart HG requires historical data")
                 return {'support_zones': [], 'resistance_zones': []}
             
+            # ตรวจสอบข้อมูลราคา
+            valid_rates = []
+            for rate in rates:
+                if (rate['high'] > 0 and rate['low'] > 0 and rate['close'] > 0 and 
+                    rate['high'] >= rate['low'] and rate['close'] >= rate['low']):
+                    valid_rates.append(rate)
+            
+            if len(valid_rates) < 20:  # ต้องการข้อมูลอย่างน้อย 20 bars
+                logger.warning(f"Insufficient valid data: {len(valid_rates)} bars - Smart HG requires more data")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            # ใช้ข้อมูลที่ valid
+            rates = valid_rates
             highs = [r['high'] for r in rates]
             lows = [r['low'] for r in rates]
             
@@ -479,6 +549,11 @@ class HGManager:
         # 1. คำนวณ ATR (Volatility)
         atr = self.calculate_atr(period=14)
         
+        # ถ้า ATR ไม่ได้ → Smart HG ไม่ทำงาน
+        if atr is None:
+            logger.warning("Cannot calculate ATR - Smart HG disabled")
+            return {'buy_distance': 0, 'sell_distance': 0}
+        
         # 2. เช็ค Grid Exposure
         exposure = position_monitor.get_net_grid_exposure()
         net_volume = exposure['net_volume']
@@ -569,6 +644,11 @@ class HGManager:
         
         # 3. หา Smart Zones
         zones = self.find_smart_hg_zones()
+        
+        # ถ้าไม่มี zones → Smart HG ไม่ทำงาน
+        if not zones['support_zones'] and not zones['resistance_zones']:
+            logger.debug("No Smart Zones found - Smart HG disabled")
+            return False
         
         # 4. เช็คว่าราคาปัจจุบันอยู่ใน Zone หรือไม่
         zone_tolerance = 10.0  # ห่างจาก zone ไม่เกิน 10 ดอลลาร์
@@ -739,6 +819,76 @@ class HGManager:
         
         return triggers
     
+    def debug_atr_calculation(self):
+        """
+        Debug function สำหรับตรวจสอบ ATR calculation
+        """
+        logger.info("=" * 60)
+        logger.info("🔍 ATR DEBUG INFORMATION")
+        logger.info("=" * 60)
+        
+        # 1. เช็คการเชื่อมต่อ MT5
+        logger.info(f"MT5 Connected: {mt5_connection.connected}")
+        
+        if not mt5_connection.connected:
+            logger.warning("❌ MT5 not connected - ATR will use default value")
+            return
+        
+        # 2. เช็ค Symbol
+        try:
+            import MetaTrader5 as mt5
+            symbol_info = mt5.symbol_info(config.mt5.symbol)
+            if symbol_info:
+                logger.info(f"✅ Symbol {config.mt5.symbol} found")
+                logger.info(f"   - Point: {symbol_info.point}")
+                logger.info(f"   - Digits: {symbol_info.digits}")
+            else:
+                logger.warning(f"❌ Symbol {config.mt5.symbol} not found")
+                return
+        except Exception as e:
+            logger.error(f"❌ Error checking symbol: {e}")
+            return
+        
+        # 3. ดึงข้อมูลราคา
+        try:
+            rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 20)
+            if rates is None:
+                logger.warning("❌ Cannot get rates from MT5")
+                return
+            
+            logger.info(f"✅ Got {len(rates)} bars from MT5")
+            
+            # ตรวจสอบข้อมูล
+            valid_count = 0
+            for i, rate in enumerate(rates):
+                if (rate['high'] > 0 and rate['low'] > 0 and rate['close'] > 0 and 
+                    rate['high'] >= rate['low'] and rate['close'] >= rate['low']):
+                    valid_count += 1
+                else:
+                    logger.warning(f"   Invalid bar {i}: H={rate['high']}, L={rate['low']}, C={rate['close']}")
+            
+            logger.info(f"✅ Valid bars: {valid_count}/{len(rates)}")
+            
+            if valid_count < 15:
+                logger.warning(f"❌ Insufficient valid data: {valid_count} < 15")
+                return
+            
+            # 4. คำนวณ ATR
+            atr = self.calculate_atr()
+            logger.info(f"✅ ATR calculated: {atr:.1f} pips")
+            
+            # 5. แสดงข้อมูลราคาล่าสุด
+            if len(rates) >= 3:
+                logger.info("Latest 3 bars:")
+                for i in range(-3, 0):
+                    rate = rates[i]
+                    logger.info(f"   Bar {len(rates)+i}: H={rate['high']:.2f}, L={rate['low']:.2f}, C={rate['close']:.2f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error in ATR debug: {e}")
+        
+        logger.info("=" * 60)
+    
     # ========================================
     # END OF SMART HG FUNCTIONS
     # ========================================
@@ -770,8 +920,15 @@ class HGManager:
         
         # ตรวจสอบว่ามี HG ที่ต้องวางหรือไม่ (เลือกโหมด)
         if config.hg.mode == 'smart':
-            logger.info(f"🧠 Using SMART HG Mode")
-            triggers = self.check_hg_trigger_smart(current_price)
+            # เช็คว่า Smart HG ทำงานได้หรือไม่
+            logger.debug("🧠 Smart HG Mode - checking ATR calculation...")
+            atr = self.calculate_atr()
+            if atr is None:
+                logger.warning("🧠 Smart HG Mode selected but ATR calculation failed - switching to Classic Mode")
+                triggers = self.check_hg_trigger(current_price)
+            else:
+                logger.info(f"🧠 Using SMART HG Mode (ATR: {atr:.1f} pips)")
+                triggers = self.check_hg_trigger_smart(current_price)
         else:
             logger.debug(f"📌 Using CLASSIC HG Mode")
             triggers = self.check_hg_trigger(current_price)
