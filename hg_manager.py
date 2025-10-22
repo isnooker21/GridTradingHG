@@ -299,25 +299,31 @@ class HGManager:
             logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with ATR calculation")
             
             # ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection ทั้งหมด
-            # ลองดึงข้อมูลแบบง่ายๆ ก่อน
+            # หา symbol ที่ถูกต้องก่อน
             try:
                 import MetaTrader5 as mt5
                 
-                logger.debug(f"Trying to get rates for symbol: {config.mt5.symbol}")
+                # ใช้ฟังก์ชันเดียวกับระบบเก่า - หา symbol ที่ถูกต้อง
+                correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+                if not correct_symbol:
+                    logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                    return None
+                
+                logger.debug(f"Using correct symbol: {correct_symbol}")
                 
                 # ลองดึงข้อมูลน้อยๆ ก่อน
-                rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 20)
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_H1, 0, 20)
                 logger.debug(f"H1 rates result: {rates is not None}")
                 
                 if rates is None:
                     logger.warning("Cannot get rates from MT5 - trying different timeframe")
                     # ลอง timeframe อื่น
-                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M15, 0, 20)
+                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M15, 0, 20)
                     logger.debug(f"M15 rates result: {rates is not None}")
                     
                 if rates is None:
                     logger.warning("Cannot get rates from MT5 - trying M5 timeframe")
-                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M5, 0, 20)
+                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M5, 0, 20)
                     logger.debug(f"M5 rates result: {rates is not None}")
                 
                 if rates is None:
@@ -464,17 +470,25 @@ class HGManager:
             try:
                 import MetaTrader5 as mt5
                 
+                # ใช้ฟังก์ชันเดียวกับระบบเก่า - หา symbol ที่ถูกต้อง
+                correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+                if not correct_symbol:
+                    logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                    return {'support_zones': [], 'resistance_zones': []}
+                
+                logger.debug(f"Using correct symbol for zones: {correct_symbol}")
+                
                 # ลองดึงข้อมูลน้อยๆ ก่อน
-                rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 50)
+                rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_H1, 0, 50)
                 
                 if rates is None:
                     logger.warning("Cannot get rates from MT5 - trying different timeframe")
                     # ลอง timeframe อื่น
-                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M15, 0, 50)
+                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M15, 0, 50)
                     
                 if rates is None:
                     logger.warning("Cannot get rates from MT5 - trying M5 timeframe")
-                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M5, 0, 50)
+                    rates = mt5.copy_rates_from_pos(correct_symbol, mt5.TIMEFRAME_M5, 0, 50)
                 
                 if rates is None or len(rates) == 0:
                     logger.warning("Cannot get historical data for zone detection - Smart HG requires historical data")
@@ -974,6 +988,13 @@ class HGManager:
                 logger.debug(f"✅ Current price available: {price_info['bid']:.2f}")
             else:
                 logger.warning("❌ Cannot get current price - Smart HG requires price data")
+            
+            # เช็ค symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if correct_symbol:
+                logger.debug(f"✅ Correct symbol found: {correct_symbol}")
+            else:
+                logger.warning(f"❌ Cannot find correct symbol for {config.mt5.symbol}")
             
             atr = self.calculate_atr()
             if atr is None:
