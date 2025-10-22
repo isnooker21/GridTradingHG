@@ -303,20 +303,49 @@ class HGManager:
                 'fibonacci': False
             }
             
-            # 1. ตรวจสอบ Support/Resistance Zones
-            zones = self.find_smart_hg_zones()
+            # 1. ตรวจสอบ Support/Resistance Zones (Multi-Timeframe)
             zone_tolerance = 10.0  # 10 ดอลลาร์
             
-            for support in zones['support_zones']:
+            # H1 Zones (สำคัญมาก)
+            h1_zones = self.find_smart_hg_zones_timeframe('H1')
+            for support in h1_zones['support_zones']:
                 if abs(price - support) <= zone_tolerance:
                     details['sr_zone'] = True
-                    strength += 1
+                    strength += 2.0  # H1 = 2 points
                     break
             
-            for resistance in zones['resistance_zones']:
+            for resistance in h1_zones['resistance_zones']:
                 if abs(price - resistance) <= zone_tolerance:
                     details['sr_zone'] = True
-                    strength += 1
+                    strength += 2.0  # H1 = 2 points
+                    break
+            
+            # M15 Zones (สำคัญปานกลาง)
+            m15_zones = self.find_smart_hg_zones_timeframe('M15')
+            for support in m15_zones['support_zones']:
+                if abs(price - support) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1.5  # M15 = 1.5 points
+                    break
+            
+            for resistance in m15_zones['resistance_zones']:
+                if abs(price - resistance) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1.5  # M15 = 1.5 points
+                    break
+            
+            # M5 Zones (สำคัญน้อย)
+            m5_zones = self.find_smart_hg_zones_timeframe('M5')
+            for support in m5_zones['support_zones']:
+                if abs(price - support) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1.0  # M5 = 1 point
+                    break
+            
+            for resistance in m5_zones['resistance_zones']:
+                if abs(price - resistance) <= zone_tolerance:
+                    details['sr_zone'] = True
+                    strength += 1.0  # M5 = 1 point
                     break
             
             # 2. ตรวจสอบ Round Numbers
@@ -327,33 +356,69 @@ class HGManager:
                     strength += 1
                     break
             
-            # 3. ตรวจสอบ Local Highs/Lows
-            local_levels = self.find_local_highs_lows()
-            for level in local_levels:
+            # 3. ตรวจสอบ Local Highs/Lows (Multi-Timeframe)
+            # H1 Local Highs/Lows (สำคัญมาก)
+            h1_local = self.find_local_highs_lows_timeframe('H1')
+            for level in h1_local:
                 if abs(price - level) <= zone_tolerance:
                     details['local_high_low'] = True
-                    strength += 1
+                    strength += 2.0  # H1 = 2 points
                     break
             
-            # 4. ตรวจสอบ Fibonacci Levels
-            fib_levels = self.calculate_fibonacci_levels()
-            for level in fib_levels:
+            # M15 Local Highs/Lows (สำคัญปานกลาง)
+            m15_local = self.find_local_highs_lows_timeframe('M15')
+            for level in m15_local:
+                if abs(price - level) <= zone_tolerance:
+                    details['local_high_low'] = True
+                    strength += 1.5  # M15 = 1.5 points
+                    break
+            
+            # M5 Local Highs/Lows (สำคัญน้อย)
+            m5_local = self.find_local_highs_lows_timeframe('M5')
+            for level in m5_local:
+                if abs(price - level) <= zone_tolerance:
+                    details['local_high_low'] = True
+                    strength += 1.0  # M5 = 1 point
+                    break
+            
+            # 4. ตรวจสอบ Fibonacci Levels (Multi-Timeframe)
+            # H1 Fibonacci (สำคัญมาก)
+            h1_fib = self.calculate_fibonacci_levels_timeframe('H1')
+            for level in h1_fib:
                 if abs(price - level) <= zone_tolerance:
                     details['fibonacci'] = True
-                    strength += 1
+                    strength += 2.0  # H1 = 2 points
                     break
             
-            # คำนวณ Lot Multiplier
-            if strength >= 4:
-                lot_multiplier = 2.0  # Zone แข็งแรงมาก
-            elif strength >= 3:
-                lot_multiplier = 1.5  # Zone แข็งแรง
-            elif strength >= 2:
-                lot_multiplier = 1.2  # Zone ปานกลาง
+            # M15 Fibonacci (สำคัญปานกลาง)
+            m15_fib = self.calculate_fibonacci_levels_timeframe('M15')
+            for level in m15_fib:
+                if abs(price - level) <= zone_tolerance:
+                    details['fibonacci'] = True
+                    strength += 1.5  # M15 = 1.5 points
+                    break
+            
+            # M5 Fibonacci (สำคัญน้อย)
+            m5_fib = self.calculate_fibonacci_levels_timeframe('M5')
+            for level in m5_fib:
+                if abs(price - level) <= zone_tolerance:
+                    details['fibonacci'] = True
+                    strength += 1.0  # M5 = 1 point
+                    break
+            
+            # คำนวณ Lot Multiplier (Multi-Timeframe)
+            if strength >= 6.0:
+                lot_multiplier = 2.5  # Zone แข็งแรงมาก (H1 + M15 + M5)
+            elif strength >= 4.5:
+                lot_multiplier = 2.0  # Zone แข็งแรงมาก (H1 + M15)
+            elif strength >= 3.0:
+                lot_multiplier = 1.5  # Zone แข็งแรง (H1 หรือ M15)
+            elif strength >= 2.0:
+                lot_multiplier = 1.2  # Zone ปานกลาง (M5 + Round)
             else:
                 lot_multiplier = 1.0  # Zone อ่อนแอ
             
-            logger.debug(f"Zone Strength at {price:.2f}: {strength}/4 (Multiplier: {lot_multiplier}x)")
+            logger.debug(f"Zone Strength at {price:.2f}: {strength:.1f}/6.5 (Multiplier: {lot_multiplier}x)")
             logger.debug(f"Details: SR={details['sr_zone']}, Round={details['round_number']}, Local={details['local_high_low']}, Fib={details['fibonacci']}")
             
             return {
@@ -396,6 +461,245 @@ class HGManager:
         clusters.append(sum(current_cluster) / len(current_cluster))
         
         return clusters
+    
+    def find_smart_hg_zones_timeframe(self, timeframe: str) -> Dict:
+        """
+        หา Support/Resistance Zones สำหรับ Timeframe ที่กำหนด
+        
+        Args:
+            timeframe: 'H1', 'M15', หรือ 'M5'
+            
+        Returns:
+            {
+                'support_zones': [2600.0, 2650.0],
+                'resistance_zones': [2700.0, 2750.0]
+            }
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # กำหนด timeframe
+            if timeframe == 'H1':
+                mt5_timeframe = mt5.TIMEFRAME_H1
+                lookback_bars = 50
+            elif timeframe == 'M15':
+                mt5_timeframe = mt5.TIMEFRAME_M15
+                lookback_bars = 100
+            elif timeframe == 'M5':
+                mt5_timeframe = mt5.TIMEFRAME_M5
+                lookback_bars = 200
+            else:
+                logger.warning(f"Invalid timeframe: {timeframe}")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            # หา symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if not correct_symbol:
+                logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            # ดึงข้อมูลราคา
+            rates = mt5.copy_rates_from_pos(correct_symbol, mt5_timeframe, 0, lookback_bars)
+            
+            if rates is None or len(rates) < 20:
+                logger.warning(f"Cannot get rates for {timeframe} zone detection")
+                return {'support_zones': [], 'resistance_zones': []}
+            
+            # หา Support และ Resistance
+            highs = [r['high'] for r in rates]
+            lows = [r['low'] for r in rates]
+            
+            # หา Local Highs และ Lows
+            local_highs = []
+            local_lows = []
+            
+            for i in range(2, len(rates) - 2):
+                current_high = rates[i]['high']
+                current_low = rates[i]['low']
+                
+                # ตรวจสอบ Local High
+                is_local_high = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['high'] >= current_high:
+                        is_local_high = False
+                        break
+                
+                if is_local_high:
+                    local_highs.append(current_high)
+                
+                # ตรวจสอบ Local Low
+                is_local_low = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['low'] <= current_low:
+                        is_local_low = False
+                        break
+                
+                if is_local_low:
+                    local_lows.append(current_low)
+            
+            # รวมราคาที่ใกล้กัน
+            support_zones = self.cluster_price_zones(local_lows, tolerance=15.0)
+            resistance_zones = self.cluster_price_zones(local_highs, tolerance=15.0)
+            
+            logger.debug(f"{timeframe} Zones: Support={len(support_zones)}, Resistance={len(resistance_zones)}")
+            
+            return {
+                'support_zones': support_zones,
+                'resistance_zones': resistance_zones
+            }
+            
+        except Exception as e:
+            logger.error(f"Error finding {timeframe} zones: {e}")
+            return {'support_zones': [], 'resistance_zones': []}
+    
+    def find_local_highs_lows_timeframe(self, timeframe: str) -> List[float]:
+        """
+        หา Local Highs และ Lows สำหรับ Timeframe ที่กำหนด
+        
+        Args:
+            timeframe: 'H1', 'M15', หรือ 'M5'
+            
+        Returns:
+            รายการราคา Local Highs และ Lows
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # กำหนด timeframe
+            if timeframe == 'H1':
+                mt5_timeframe = mt5.TIMEFRAME_H1
+                lookback_bars = 50
+            elif timeframe == 'M15':
+                mt5_timeframe = mt5.TIMEFRAME_M15
+                lookback_bars = 100
+            elif timeframe == 'M5':
+                mt5_timeframe = mt5.TIMEFRAME_M5
+                lookback_bars = 200
+            else:
+                logger.warning(f"Invalid timeframe: {timeframe}")
+                return []
+            
+            # หา symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if not correct_symbol:
+                logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                return []
+            
+            # ดึงข้อมูลราคา
+            rates = mt5.copy_rates_from_pos(correct_symbol, mt5_timeframe, 0, lookback_bars)
+            
+            if rates is None or len(rates) < 10:
+                logger.warning(f"Cannot get rates for {timeframe} local highs/lows detection")
+                return []
+            
+            # หา Local Highs และ Lows
+            local_levels = []
+            
+            for i in range(2, len(rates) - 2):
+                current_high = rates[i]['high']
+                current_low = rates[i]['low']
+                
+                # ตรวจสอบ Local High
+                is_local_high = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['high'] >= current_high:
+                        is_local_high = False
+                        break
+                
+                if is_local_high:
+                    local_levels.append(current_high)
+                
+                # ตรวจสอบ Local Low
+                is_local_low = True
+                for j in range(i-2, i+3):
+                    if j != i and rates[j]['low'] <= current_low:
+                        is_local_low = False
+                        break
+                
+                if is_local_low:
+                    local_levels.append(current_low)
+            
+            # รวมราคาที่ใกล้กัน
+            local_levels = self.cluster_price_zones(local_levels, tolerance=15.0)
+            
+            logger.debug(f"{timeframe} Local Highs/Lows: {len(local_levels)} levels")
+            
+            return local_levels
+            
+        except Exception as e:
+            logger.error(f"Error finding {timeframe} local highs/lows: {e}")
+            return []
+    
+    def calculate_fibonacci_levels_timeframe(self, timeframe: str) -> List[float]:
+        """
+        คำนวณ Fibonacci Levels สำหรับ Timeframe ที่กำหนด
+        
+        Args:
+            timeframe: 'H1', 'M15', หรือ 'M5'
+            
+        Returns:
+            รายการราคา Fibonacci Levels
+        """
+        try:
+            import MetaTrader5 as mt5
+            
+            # กำหนด timeframe
+            if timeframe == 'H1':
+                mt5_timeframe = mt5.TIMEFRAME_H1
+                lookback_bars = 100
+            elif timeframe == 'M15':
+                mt5_timeframe = mt5.TIMEFRAME_M15
+                lookback_bars = 200
+            elif timeframe == 'M5':
+                mt5_timeframe = mt5.TIMEFRAME_M5
+                lookback_bars = 400
+            else:
+                logger.warning(f"Invalid timeframe: {timeframe}")
+                return []
+            
+            # หา symbol ที่ถูกต้อง
+            correct_symbol = mt5_connection.find_symbol_with_suffix(config.mt5.symbol)
+            if not correct_symbol:
+                logger.warning(f"Cannot find correct symbol for {config.mt5.symbol}")
+                return []
+            
+            # ดึงข้อมูลราคา
+            rates = mt5.copy_rates_from_pos(correct_symbol, mt5_timeframe, 0, lookback_bars)
+            
+            if rates is None or len(rates) < 20:
+                logger.warning(f"Cannot get rates for {timeframe} fibonacci calculation")
+                return []
+            
+            # หา High และ Low
+            highs = [r['high'] for r in rates]
+            lows = [r['low'] for r in rates]
+            
+            swing_high = max(highs)
+            swing_low = min(lows)
+            
+            # คำนวณ Fibonacci Levels
+            fib_range = swing_high - swing_low
+            fib_levels = []
+            
+            # Fibonacci ratios
+            fib_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]
+            
+            for ratio in fib_ratios:
+                # Retracement levels
+                retracement = swing_high - (fib_range * ratio)
+                fib_levels.append(retracement)
+                
+                # Extension levels
+                extension = swing_low + (fib_range * ratio)
+                fib_levels.append(extension)
+            
+            logger.debug(f"{timeframe} Fibonacci levels: {len(fib_levels)} levels")
+            
+            return fib_levels
+            
+        except Exception as e:
+            logger.error(f"Error calculating {timeframe} fibonacci levels: {e}")
+            return []
     
     def find_local_highs_lows(self, lookback_bars: int = 50) -> List[float]:
         """
@@ -804,13 +1108,13 @@ class HGManager:
             logger.debug("No Zone Strength found - Smart HG disabled")
             return False
         
-        # 4. เข้า HG เฉพาะเมื่อ Zone Strength >= 2
-        if zone_strength['strength'] >= 2:
-            logger.info(f"✅ SMART HG {hg_type.upper()} at Zone Strength {zone_strength['strength']}/4 (current: {current_price:.2f})")
+        # 4. เข้า HG เฉพาะเมื่อ Zone Strength >= 2.0 (Multi-Timeframe)
+        if zone_strength['strength'] >= 2.0:
+            logger.info(f"✅ SMART HG {hg_type.upper()} at Zone Strength {zone_strength['strength']:.1f}/6.5 (current: {current_price:.2f})")
             logger.info(f"   Details: SR={zone_strength['details']['sr_zone']}, Round={zone_strength['details']['round_number']}, Local={zone_strength['details']['local_high_low']}, Fib={zone_strength['details']['fibonacci']}")
             return True
         
-        logger.debug(f"⚠️ HG {hg_type.upper()} skipped: Zone Strength too low ({zone_strength['strength']}/4)")
+        logger.debug(f"⚠️ HG {hg_type.upper()} skipped: Zone Strength too low ({zone_strength['strength']:.1f}/6.5)")
         return False
     
     def calculate_grid_average_price(self, order_type: str) -> float:
@@ -1086,13 +1390,13 @@ class HGManager:
             else:
                 logger.warning(f"❌ Cannot find correct symbol for {config.mt5.symbol}")
             
-            # ทดสอบ Zone Strength
+            # ทดสอบ Zone Strength (Multi-Timeframe)
             zone_strength = self.calculate_zone_strength(current_price)
             if zone_strength['strength'] == 0:
                 logger.warning("🧠 Smart HG Mode selected but no Zone Strength found - switching to Classic Mode")
                 triggers = self.check_hg_trigger(current_price)
             else:
-                logger.info(f"🧠 Using SMART HG Mode (Zone Strength: {zone_strength['strength']}/4)")
+                logger.info(f"🧠 Using SMART HG Mode (Multi-Timeframe Zone Strength: {zone_strength['strength']:.1f}/6.5)")
                 triggers = self.check_hg_trigger_smart(current_price)
         else:
             logger.debug(f"📌 Using CLASSIC HG Mode")
