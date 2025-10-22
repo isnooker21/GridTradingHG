@@ -268,15 +268,15 @@ class HGManager:
     def calculate_atr(self, period: int = 14) -> float:
         """
         คำนวณ ATR (Average True Range) สำหรับวัด Volatility
+        ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection เท่านั้น
         
         Args:
             period: จำนวน bars สำหรับคำนวณ (default: 14)
             
         Returns:
-            ATR value (pips)
+            ATR value (pips) หรือ None ถ้าไม่สามารถคำนวณได้
         """
         try:
-            import MetaTrader5 as mt5
             import time
             
             # ใช้ cache ถ้ายังไม่หมดอายุ (5 นาที)
@@ -301,6 +301,8 @@ class HGManager:
             # ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection ทั้งหมด
             # ลองดึงข้อมูลแบบง่ายๆ ก่อน
             try:
+                import MetaTrader5 as mt5
+                
                 logger.debug(f"Trying to get rates for symbol: {config.mt5.symbol}")
                 
                 # ลองดึงข้อมูลน้อยๆ ก่อน
@@ -460,6 +462,8 @@ class HGManager:
             
             # ใช้วิธีเดียวกับระบบเก่า - ลองหลาย timeframe
             try:
+                import MetaTrader5 as mt5
+                
                 # ลองดึงข้อมูลน้อยๆ ก่อน
                 rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 50)
                 
@@ -963,6 +967,13 @@ class HGManager:
             logger.debug("🧠 Smart HG Mode - checking ATR calculation...")
             logger.debug(f"MT5 Connected: {mt5_connection.connected}")
             logger.debug(f"Symbol: {config.mt5.symbol}")
+            
+            # เช็คว่าระบบเก่าทำงานได้หรือไม่
+            price_info = mt5_connection.get_current_price()
+            if price_info:
+                logger.debug(f"✅ Current price available: {price_info['bid']:.2f}")
+            else:
+                logger.warning("❌ Cannot get current price - Smart HG requires price data")
             
             atr = self.calculate_atr()
             if atr is None:
