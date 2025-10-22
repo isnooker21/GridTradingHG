@@ -298,16 +298,38 @@ class HGManager:
             
             logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with ATR calculation")
             
-            # ดึงราคาย้อนหลัง (H1 timeframe) - เพิ่มจำนวน bars
-            required_bars = period + 5  # เพิ่ม buffer
-            rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, required_bars)
-            
-            if rates is None:
-                logger.warning("Cannot get rates from MT5 - Smart HG requires historical data")
-                return None
-            
-            if len(rates) < period + 1:
-                logger.warning(f"Insufficient data: {len(rates)} bars (need {period + 1}) - Smart HG requires more data")
+            # ใช้วิธีเดียวกับระบบเก่า - ใช้ mt5_connection ทั้งหมด
+            # ลองดึงข้อมูลแบบง่ายๆ ก่อน
+            try:
+                logger.debug(f"Trying to get rates for symbol: {config.mt5.symbol}")
+                
+                # ลองดึงข้อมูลน้อยๆ ก่อน
+                rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 20)
+                logger.debug(f"H1 rates result: {rates is not None}")
+                
+                if rates is None:
+                    logger.warning("Cannot get rates from MT5 - trying different timeframe")
+                    # ลอง timeframe อื่น
+                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M15, 0, 20)
+                    logger.debug(f"M15 rates result: {rates is not None}")
+                    
+                if rates is None:
+                    logger.warning("Cannot get rates from MT5 - trying M5 timeframe")
+                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M5, 0, 20)
+                    logger.debug(f"M5 rates result: {rates is not None}")
+                
+                if rates is None:
+                    logger.warning("Cannot get rates from MT5 - Smart HG requires historical data")
+                    return None
+                
+                logger.debug(f"Got {len(rates)} bars from MT5")
+                
+                if len(rates) < period + 1:
+                    logger.warning(f"Insufficient data: {len(rates)} bars (need {period + 1}) - Smart HG requires more data")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error getting rates from MT5: {e}")
                 return None
             
             # ตรวจสอบข้อมูลราคา
@@ -436,11 +458,28 @@ class HGManager:
             
             logger.debug(f"Current price: {price_info['bid']:.2f} - proceeding with zone detection")
             
-            # ดึงราคาย้อนหลัง
-            rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, lookback_bars)
-            
-            if rates is None or len(rates) == 0:
-                logger.warning("Cannot get historical data for zone detection - Smart HG requires historical data")
+            # ใช้วิธีเดียวกับระบบเก่า - ลองหลาย timeframe
+            try:
+                # ลองดึงข้อมูลน้อยๆ ก่อน
+                rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_H1, 0, 50)
+                
+                if rates is None:
+                    logger.warning("Cannot get rates from MT5 - trying different timeframe")
+                    # ลอง timeframe อื่น
+                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M15, 0, 50)
+                    
+                if rates is None:
+                    logger.warning("Cannot get rates from MT5 - trying M5 timeframe")
+                    rates = mt5.copy_rates_from_pos(config.mt5.symbol, mt5.TIMEFRAME_M5, 0, 50)
+                
+                if rates is None or len(rates) == 0:
+                    logger.warning("Cannot get historical data for zone detection - Smart HG requires historical data")
+                    return {'support_zones': [], 'resistance_zones': []}
+                
+                logger.debug(f"Got {len(rates)} bars for zone detection")
+                    
+            except Exception as e:
+                logger.error(f"Error getting rates for zone detection: {e}")
                 return {'support_zones': [], 'resistance_zones': []}
             
             # ตรวจสอบข้อมูลราคา
@@ -922,6 +961,9 @@ class HGManager:
         if config.hg.mode == 'smart':
             # เช็คว่า Smart HG ทำงานได้หรือไม่
             logger.debug("🧠 Smart HG Mode - checking ATR calculation...")
+            logger.debug(f"MT5 Connected: {mt5_connection.connected}")
+            logger.debug(f"Symbol: {config.mt5.symbol}")
+            
             atr = self.calculate_atr()
             if atr is None:
                 logger.warning("🧠 Smart HG Mode selected but ATR calculation failed - switching to Classic Mode")
