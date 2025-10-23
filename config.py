@@ -32,7 +32,6 @@ class HGSettings:
     """การตั้งค่า Hedge (HG)"""
     # General
     enabled: bool = True           # เปิด/ปิดระบบ HG
-    mode: str = "classic"          # โหมด HG: classic (Fixed Distance) หรือ smart (Dynamic + SR-based)
     direction: str = "buy"         # ทิศทาง HG: buy, sell, both (ตั้งเป็น buy only)
     
     # Buy HG Settings
@@ -117,7 +116,6 @@ class Config:
             # HG Settings
             if 'HG' in parser:
                 self.hg.enabled = parser.getboolean('HG', 'enabled', fallback=True)
-                self.hg.mode = parser.get('HG', 'mode', fallback='classic')
                 self.hg.direction = parser.get('HG', 'direction', fallback='both')
                 
                 # Buy HG Settings
@@ -182,7 +180,6 @@ class Config:
         # HG Section
         parser['HG'] = {
             'enabled': str(self.hg.enabled),
-            'mode': self.hg.mode,
             'direction': self.hg.direction,
             # Buy HG Settings
             'buy_hg_distance': str(self.hg.buy_hg_distance),
