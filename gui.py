@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import requests
 from mt5_connection import mt5_connection
 from grid_manager import grid_manager
-from hg_manager import hg_manager
+from hg_manager import HGManager
 from position_monitor import position_monitor
 from config import config
 from risk_calculator import risk_calculator
@@ -33,6 +33,9 @@ class TradingGUI:
         self.is_running = False
         self.monitoring_thread = None
         self.stop_monitoring = False
+        
+        # สร้าง HG Manager
+        self.hg_manager = HGManager()
         
         # สร้าง GUI components
         self.create_widgets()
@@ -864,8 +867,9 @@ class TradingGUI:
             return
         
         # เริ่ม HG System
-        hg_manager.start_hg_system(current_price)
-        self.log_message(f"✓ HG System started")
+        if config.hg.enabled:
+            self.hg_manager.start_hg_system(current_price)
+            self.log_message(f"✓ HG System started at {current_price:.2f}")
         
         # เริ่ม monitoring
         self.is_running = True
@@ -892,7 +896,7 @@ class TradingGUI:
         self.stop_monitoring = True
         
         grid_manager.stop_grid_trading(close_positions=False)
-        hg_manager.stop_hg_system(close_positions=False)
+        self.hg_manager.stop_hg_system()
         
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
@@ -917,7 +921,6 @@ class TradingGUI:
         closed = mt5_connection.close_all_positions()
         
         grid_manager.stop_grid_trading(close_positions=False)
-        hg_manager.stop_hg_system(close_positions=False)
         
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
@@ -967,8 +970,11 @@ class TradingGUI:
                 # อัพเดท Grid
                 grid_manager.update_grid_status()
                 
-                # อัพเดท HG
-                hg_manager.manage_multiple_hg()
+                # อัพเดท HG (ถ้าเปิดใช้งาน)
+                if config.hg.enabled:
+                    price_info = mt5_connection.get_current_price()
+                    if price_info:
+                        self.hg_manager.manage_multiple_hg(price_info['bid'])
                 
                 # อัพเดท positions
                 position_monitor.update_all_positions()
@@ -1000,8 +1006,8 @@ class TradingGUI:
             self.grid_levels_var.set(f"{grid_status['active_levels']} levels")
             
             # อัพเดท HG status
-            hg_status = hg_manager.get_hg_status()
-            self.hg_positions_var.set(f"{hg_status['total_hg']} positions")
+            hg_status = self.hg_manager.get_hg_status()
+            self.hg_positions_var.set(f"{hg_status['placed_hg_count']} positions")
             
             # อัพเดท positions summary
             summary = position_monitor.get_positions_summary()

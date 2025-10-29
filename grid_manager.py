@@ -193,6 +193,14 @@ class GridManager:
             position_monitor.update_all_positions()
             grid_positions = position_monitor.grid_positions
             
+            # ซิงค์ placed_orders กับ MT5 positions เพื่อลบ order ที่ปิดไปแล้ว
+            tickets_in_mt5 = [pos['ticket'] for pos in grid_positions]
+            for level_key, ticket in list(self.placed_orders.items()):
+                if ticket not in tickets_in_mt5:
+                    # Order นี้ปิดไปแล้ว ลบออก
+                    del self.placed_orders[level_key]
+                    logger.debug(f"Removed closed order: {level_key} ({ticket})")
+            
             # ตรวจสอบจาก MT5 positions
             for pos in grid_positions:
                 if pos['ticket'] not in self.placed_orders.values():

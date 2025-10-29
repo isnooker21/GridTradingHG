@@ -87,6 +87,9 @@ class Config:
         # โหลดการตั้งค่าจากไฟล์ถ้ามี
         if os.path.exists(config_file):
             self.load_from_file()
+        else:
+            # ถ้าไม่มีไฟล์ ให้สร้างไฟล์ default
+            self.save_to_file()
     
     def load_from_file(self):
         """โหลดการตั้งค่าจากไฟล์ .ini"""

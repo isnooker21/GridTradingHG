@@ -5,6 +5,7 @@ import MetaTrader5 as mt5
 from typing import Optional, Dict, List
 import logging
 from datetime import datetime
+import threading
 from config import config
 
 # ตั้งค่า logging
@@ -20,6 +21,8 @@ class MT5Connection:
         self.symbol = config.mt5.symbol
         self.magic_number = config.mt5.magic_number
         self.deviation = config.mt5.deviation
+        self.cached_filling_mode = None  # จดจำ filling mode ที่ใช้งานได้
+        self.order_lock = threading.Lock()  # Lock สำหรับป้องกันการส่ง order พร้อมกันจากหลาย thread
     
     def find_symbol_with_suffix(self, base_symbol: str = "XAUUSD") -> Optional[str]:
         """
@@ -179,6 +182,55 @@ class MT5Connection:
             logger.error(f"Error getting price: {e}")
             return None
     
+    def _get_filling_mode(self, symbol_info) -> int:
+        """
+        กำหนด type_filling ตาม symbol properties และ broker
+        รองรับหลาย brokers โดยการตรวจสอบ filling modes ที่รองรับ
+        
+        Args:
+            symbol_info: ข้อมูล symbol จาก MT5
+            
+        Returns:
+            type_filling ที่เหมาะสม
+        """
+        # ถ้ามี cached filling mode ให้ใช้เลย
+        if self.cached_filling_mode is not None:
+            logger.debug(f"Using cached filling mode: {self.cached_filling_mode}")
+            return self.cached_filling_mode
+        
+        try:
+            # ตรวจสอบ filling modes ที่รองรับ
+            filling_modes = symbol_info.filling_mode
+            
+            logger.info(f"Symbol: {self.symbol}")
+            logger.info(f"Filling modes supported: {filling_modes}")
+            logger.info(f"  - FOK (1): {bool(filling_modes & 1)}")
+            logger.info(f"  - IOC (2): {bool(filling_modes & 2)}")
+            logger.info(f"  - RETURN (4): {bool(filling_modes & 4)}")
+            
+            # ลองเลือก filling mode ตามลำดับความสำคัญ
+            if filling_modes & 1:
+                selected_mode = mt5.ORDER_FILLING_FOK
+                logger.info("Using FOK filling mode")
+            elif filling_modes & 2:
+                selected_mode = mt5.ORDER_FILLING_IOC
+                logger.info("Using IOC filling mode")
+            elif filling_modes & 4:
+                selected_mode = mt5.ORDER_FILLING_RETURN
+                logger.info("Using RETURN filling mode")
+            else:
+                selected_mode = mt5.ORDER_FILLING_IOC
+                logger.warning("No filling mode detected, using IOC as default")
+            
+            # จดจำ filling mode ที่เลือกไว้
+            self.cached_filling_mode = selected_mode
+            
+            return selected_mode
+                
+        except Exception as e:
+            logger.error(f"Error determining filling mode: {e}")
+            return mt5.ORDER_FILLING_IOC
+    
     def place_order(self, order_type: str, volume: float, 
                    price: Optional[float] = None,
                    sl: Optional[float] = None, 
@@ -198,57 +250,63 @@ class MT5Connection:
         Returns:
             ticket number ถ้าสำเร็จ หรือ None ถ้าล้มเหลว
         """
-        try:
-            symbol_info = mt5.symbol_info(self.symbol)
-            if symbol_info is None:
-                logger.error(f"Symbol {self.symbol} not found")
+        # ใช้ Lock เพื่อป้องกันการส่ง order พร้อมกันจากหลาย thread (Grid และ HG)
+        with self.order_lock:
+            try:
+                symbol_info = mt5.symbol_info(self.symbol)
+                if symbol_info is None:
+                    logger.error(f"Symbol {self.symbol} not found")
+                    return None
+                
+                # กำหนดประเภทคำสั่ง
+                if order_type.lower() == "buy":
+                    trade_type = mt5.ORDER_TYPE_BUY
+                    if price is None:
+                        price = mt5.symbol_info_tick(self.symbol).ask
+                else:  # sell
+                    trade_type = mt5.ORDER_TYPE_SELL
+                    if price is None:
+                        price = mt5.symbol_info_tick(self.symbol).bid
+                
+                # ปรับ volume ให้ถูกต้องตาม step
+                volume = round(volume / symbol_info.volume_step) * symbol_info.volume_step
+                
+                # กำหนด type_filling
+                type_filling = self._get_filling_mode(symbol_info)
+                
+                # สร้าง request
+                request = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": self.symbol,
+                    "volume": volume,
+                    "type": trade_type,
+                    "price": price,
+                    "deviation": self.deviation,
+                    "magic": self.magic_number,
+                    "comment": comment,
+                    "type_time": mt5.ORDER_TIME_GTC,
+                    "type_filling": type_filling,
+                }
+                
+                # เพิ่ม SL/TP ถ้ามี
+                if sl is not None:
+                    request["sl"] = sl
+                if tp is not None:
+                    request["tp"] = tp
+                
+                # ส่งคำสั่ง
+                result = mt5.order_send(request)
+                
+                if result.retcode != mt5.TRADE_RETCODE_DONE:
+                    logger.error(f"Order failed: {result.retcode} - {result.comment}")
+                    return None
+                
+                logger.info(f"Order placed: {order_type.upper()} {volume} lots at {price} | Ticket: {result.order}")
+                return result.order
+                
+            except Exception as e:
+                logger.error(f"Error placing order: {e}")
                 return None
-            
-            # กำหนดประเภทคำสั่ง
-            if order_type.lower() == "buy":
-                trade_type = mt5.ORDER_TYPE_BUY
-                if price is None:
-                    price = mt5.symbol_info_tick(self.symbol).ask
-            else:  # sell
-                trade_type = mt5.ORDER_TYPE_SELL
-                if price is None:
-                    price = mt5.symbol_info_tick(self.symbol).bid
-            
-            # ปรับ volume ให้ถูกต้องตาม step
-            volume = round(volume / symbol_info.volume_step) * symbol_info.volume_step
-            
-            # สร้าง request (ไม่กำหนด type_filling ให้โบรกเลือกเอง)
-            request = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": self.symbol,
-                "volume": volume,
-                "type": trade_type,
-                "price": price,
-                "deviation": self.deviation,
-                "magic": self.magic_number,
-                "comment": comment,
-                "type_time": mt5.ORDER_TIME_GTC,
-            }
-            
-            # เพิ่ม SL/TP ถ้ามี
-            if sl is not None:
-                request["sl"] = sl
-            if tp is not None:
-                request["tp"] = tp
-            
-            # ส่งคำสั่ง
-            result = mt5.order_send(request)
-            
-            if result.retcode != mt5.TRADE_RETCODE_DONE:
-                logger.error(f"Order failed: {result.retcode} - {result.comment}")
-                return None
-            
-            logger.info(f"Order placed: {order_type.upper()} {volume} lots at {price} | Ticket: {result.order}")
-            return result.order
-            
-        except Exception as e:
-            logger.error(f"Error placing order: {e}")
-            return None
     
     def modify_order(self, ticket: int, sl: Optional[float] = None, 
                     tp: Optional[float] = None) -> bool:
@@ -321,7 +379,11 @@ class MT5Connection:
                 trade_type = mt5.ORDER_TYPE_BUY
                 price = mt5.symbol_info_tick(self.symbol).ask
             
-            # สร้าง request (ไม่กำหนด type_filling ให้โบรกเลือกเอง)
+            # กำหนด type_filling
+            symbol_info = mt5.symbol_info(self.symbol)
+            type_filling = self._get_filling_mode(symbol_info)
+            
+            # สร้าง request
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": self.symbol,
@@ -333,6 +395,7 @@ class MT5Connection:
                 "magic": self.magic_number,
                 "comment": f"Close {position.comment}",
                 "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": type_filling,
             }
             
             result = mt5.order_send(request)
