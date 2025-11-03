@@ -322,10 +322,8 @@ class GridManager:
                 
                 logger.info(f"✓ New BUY placed: {config.grid.buy_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
             else:
-                # ล้มเหลว ให้ retry
-                logger.warning("Order placement failed - retrying...")
-                time.sleep(1)
-                return self.place_new_buy_order(current_price)
+                # ล้มเหลว ไม่ retry เพื่อป้องกัน hang (จะลองใหม่ในรอบถัดไป)
+                logger.warning(f"Order placement failed - will retry in next cycle")
         finally:
             self.placing_order_lock = False
     
@@ -402,10 +400,8 @@ class GridManager:
                 
                 logger.info(f"✓ New SELL placed: {config.grid.sell_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
             else:
-                # ล้มเหลว ให้ retry
-                logger.warning("Order placement failed - retrying...")
-                time.sleep(1)
-                return self.place_new_sell_order(current_price)
+                # ล้มเหลว ไม่ retry เพื่อป้องกัน hang (จะลองใหม่ในรอบถัดไป)
+                logger.warning(f"Order placement failed - will retry in next cycle")
         finally:
             self.placing_order_lock = False
     

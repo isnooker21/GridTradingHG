@@ -964,7 +964,8 @@ class TradingGUI:
             except Exception as e:
                 self._stop_trading_internal()
                 self.log_message(f"✗ Trading stopped: {e}")
-                messagebox.showerror("Error", str(e))
+                # ย้าย messagebox ไปใช้ root.after() เพื่อป้องกัน hang ใน background thread
+                self.root.after(0, lambda err=str(e): messagebox.showerror("Error", err))
 
             try:
                 # อัพเดท Grid
@@ -990,7 +991,7 @@ class TradingGUI:
                 
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
-                self.root.after(0, lambda: self.log_message(f"✗ Error: {e}"))
+                self.root.after(0, lambda err=str(e): self.log_message(f"✗ Error: {err}"))
     
     def update_display(self):
         """อัพเดทการแสดงผลใน GUI"""
