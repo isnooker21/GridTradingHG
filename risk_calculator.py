@@ -22,8 +22,45 @@ class RiskCalculator:
         return (lot * self.contract_size * price) / leverage
     
     def calculate_pip_value_for_lot(self, lot: float) -> float:
-        """คำนวณมูลค่าต่อ pip สำหรับ lot ที่กำหนด"""
+        """
+        คำนวณมูลค่าต่อ pip สำหรับ lot ที่กำหนด
+        สำหรับ XAUUSD: 0.01 lot = $0.10 per pip
+        """
         return lot * self.pip_value_per_lot
+    
+    def calculate_drawdown_for_position(self, position_distance: int, current_distance: int, 
+                                       pip_value: float, position_type: str) -> float:
+        """
+        คำนวณ drawdown สำหรับ position เดียว (worst case scenario)
+        
+        สำหรับ worst case: ราคาลงไปเรื่อยๆ (สำหรับ Buy positions)
+        
+        Args:
+            position_distance: ระยะห่างจากราคาเริ่มต้นที่เปิด position (pips)
+                               เช่น ถ้าเปิดที่ 50 pips จากราคาเริ่มต้น = 50
+            current_distance: ระยะห่างปัจจุบันจากราคาเริ่มต้น (pips)
+                             เช่น ถ้าราคาลง 500 pips จากราคาเริ่มต้น = 500
+            pip_value: มูลค่าต่อ pip ของ position นี้ ($0.10 สำหรับ 0.01 lot)
+            position_type: 'buy' หรือ 'sell'
+        
+        Returns:
+            drawdown ในหน่วยดอลลาร์
+        """
+        if position_type == 'buy':
+            # Buy position: drawdown เมื่อราคาลง (current_distance > position_distance)
+            # ตัวอย่าง: position_distance = 50, current_distance = 500
+            #          drawdown = (500 - 50) × $0.10 = $45
+            if current_distance > position_distance:
+                drawdown_pips = current_distance - position_distance
+                return drawdown_pips * pip_value
+            else:
+                # ราคายังไม่ถึงหรือผ่านราคาเปิด position (ไม่มี drawdown)
+                return 0.0
+        else:  # sell
+            # Sell position: ใน worst case (ราคาลงไปเรื่อยๆ) sell position จะมีกำไร
+            # เพราะ sell position เปิดที่ราคาสูงกว่า และราคาลง
+            # ดังนั้นไม่นับ drawdown สำหรับ sell ใน worst case scenario (ราคาลง)
+            return 0.0
     
     def simulate_grid_only(self, balance: float, price: float, leverage: int = 100) -> Dict:
         """Simulate ระบบ Grid อย่างเดียว (รองรับ Buy/Sell แยกกัน)"""
@@ -42,16 +79,20 @@ class RiskCalculator:
         positions = []
         current_distance = 0
         total_margin = 0
-        total_drawdown = 0
         safe_margin_level = 1.5
         
+        # ใช้ระยะที่เล็กกว่าเป็น step
+        step_distance = min(buy_distance, sell_distance) if direction == "both" else (buy_distance if direction == "buy" else sell_distance)
+        
         while True:
-            current_distance += min(buy_distance, sell_distance)  # ใช้ระยะที่เล็กกว่า
+            current_distance += step_distance
             
             # เพิ่มไม้ตามทิศทาง
             if direction == "both":
+                # วางทั้ง Buy และ Sell ทุกๆ step
                 positions.append({'distance': current_distance, 'lot': buy_lot, 'type': 'buy', 'pip_value': pip_value_buy})
-                total_margin += margin_per_buy
+                positions.append({'distance': current_distance, 'lot': sell_lot, 'type': 'sell', 'pip_value': pip_value_sell})
+                total_margin += margin_per_buy + margin_per_sell
             elif direction == "buy":
                 positions.append({'distance': current_distance, 'lot': buy_lot, 'type': 'buy', 'pip_value': pip_value_buy})
                 total_margin += margin_per_buy
@@ -59,20 +100,36 @@ class RiskCalculator:
                 positions.append({'distance': current_distance, 'lot': sell_lot, 'type': 'sell', 'pip_value': pip_value_sell})
                 total_margin += margin_per_sell
             
-            # คำนวณ Drawdown
-            total_drawdown = sum((current_distance - p['distance']) * p['pip_value'] for p in positions)
+            # คำนวณ Drawdown (worst case: ราคาลงไปเรื่อยๆ)
+            # สำหรับ Buy positions: drawdown = ระยะห่างจากราคาเปิด × pip_value
+            # สำหรับ Sell positions: ใน worst case (ราคาลง) จะมีกำไร ไม่นับ drawdown
+            total_drawdown = sum(
+                self.calculate_drawdown_for_position(
+                    p['distance'], current_distance, p['pip_value'], p['type']
+                ) for p in positions
+            )
             
             equity = balance - total_drawdown
             margin_level = equity / total_margin if total_margin > 0 else 999
             
+            # หยุดเมื่อ margin level ต่ำเกินไป หรือ equity ไม่พอใช้ margin หรือเกิน 10000 pips
             if margin_level < safe_margin_level or equity < total_margin or current_distance > 10000:
+                # คำนวณผลลัพธ์ก่อนที่จะเพิ่ม position ล่าสุด
+                prev_distance = current_distance - step_distance
+                prev_drawdown = sum(
+                    self.calculate_drawdown_for_position(
+                        p['distance'], prev_distance, p['pip_value'], p['type']
+                    ) for p in positions[:-1] if direction != "both" else positions[:-2]
+                )
+                prev_margin = total_margin - (margin_per_buy + margin_per_sell if direction == "both" else (margin_per_buy if direction == "buy" else margin_per_sell))
+                
                 return {
-                    'max_distance_pips': current_distance - min(buy_distance, sell_distance),
-                    'max_levels': len(positions) - 1,
-                    'max_margin': total_margin - (margin_per_buy if direction != "sell" else margin_per_sell),
-                    'max_drawdown': total_drawdown,
-                    'final_margin_level': margin_level,
-                    'final_equity': equity,
+                    'max_distance_pips': prev_distance,
+                    'max_levels': len(positions) - (2 if direction == "both" else 1),
+                    'max_margin': prev_margin,
+                    'max_drawdown': prev_drawdown,
+                    'final_margin_level': (balance - prev_drawdown) / prev_margin if prev_margin > 0 else 999,
+                    'final_equity': balance - prev_drawdown,
                     'status': 'AT_LIMIT' if margin_level < safe_margin_level else 'SAFE'
                 }
     
@@ -125,10 +182,21 @@ class RiskCalculator:
             total_margin = sum(self.calculate_margin_per_lot(price, p['lot'], leverage) 
                              for p in grid_positions + hg_positions)
             
-            grid_dd = sum((current_distance - p['distance']) * self.calculate_pip_value_for_lot(p['lot']) 
-                         for p in grid_positions)
-            hg_dd = sum((current_distance - p['distance']) * self.calculate_pip_value_for_lot(p['lot']) 
-                       for p in hg_positions)
+            # คำนวณ Drawdown ด้วยฟังก์ชันที่ถูกต้อง (worst case: ราคาลงไปเรื่อยๆ)
+            grid_dd = sum(
+                self.calculate_drawdown_for_position(
+                    p['distance'], current_distance, 
+                    self.calculate_pip_value_for_lot(p['lot']), 
+                    p['type']
+                ) for p in grid_positions
+            )
+            hg_dd = sum(
+                self.calculate_drawdown_for_position(
+                    p['distance'], current_distance, 
+                    self.calculate_pip_value_for_lot(p['lot']), 
+                    p['type']
+                ) for p in hg_positions
+            )
             total_drawdown = grid_dd + hg_dd
             
             equity = balance - total_drawdown

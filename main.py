@@ -21,6 +21,8 @@ Version: 1.0
 
 import sys
 import logging
+import traceback
+from datetime import datetime
 from gui import run_gui
 
 # ตั้งค่า logging
@@ -34,6 +36,13 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# ตั้งค่า error logging แยกไฟล์
+error_logger = logging.getLogger('error')
+error_file = logging.FileHandler('error.log', encoding='utf-8')
+error_file.setLevel(logging.ERROR)
+error_file.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s\n'))
+error_logger.addHandler(error_file)
 
 
 def main():
@@ -57,7 +66,9 @@ def main():
         logger.info("=" * 60)
         
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
+        error_msg = f"Fatal error: {e}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        error_logger.error(error_msg)
         sys.exit(1)
     
     finally:

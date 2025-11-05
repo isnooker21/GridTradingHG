@@ -151,7 +151,7 @@ class HGManager:
         hg_lot = self.calculate_hg_lot(hg_info['type'])
         
         # กำหนด comment
-        comment = f"{config.mt5.comment_hg}_{hg_info['level_key']}"
+        comment = config.mt5.comment_hg
         
         # วาง order (ไม่มี TP เพราะจะใช้วิธี breakeven)
         ticket = mt5_connection.place_order(
@@ -187,7 +187,9 @@ class HGManager:
         # อัพเดท positions
         position_monitor.update_all_positions()
         
-        for level_key, hg_data in self.placed_hg.items():
+        # ใช้ list() เพื่อสร้าง copy ของ keys เพื่อป้องกันปัญหาเมื่อลบ element ขณะ iterate
+        for level_key in list(self.placed_hg.keys()):
+            hg_data = self.placed_hg[level_key]
             # ตรวจสอบว่า position ยังเปิดอยู่หรือไม่
             pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
             
@@ -196,6 +198,8 @@ class HGManager:
                 logger.info(f"HG closed: {level_key}")
                 # เพิ่มลง closed_hg_levels เพื่อไม่ให้วางซ้ำ
                 self.closed_hg_levels.add(level_key)
+                # ลบออกจาก placed_hg เพื่อไม่ให้ log ซ้ำอีก
+                del self.placed_hg[level_key]
                 continue
             
             # ตรวจสอบว่าตั้ง breakeven แล้วหรือยัง

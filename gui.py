@@ -484,9 +484,12 @@ class TradingGUI:
                 self.risk_result_text.insert(tk.END, f"   💰 Final Equity:       ${with_hg['final_equity']:,.2f}\n")
                 self.risk_result_text.insert(tk.END, f"   🛡️  Status:             {with_hg['status']}\n\n")
                 
-                # Comparison
-                reduction = ((grid_only['max_distance_pips'] - with_hg['max_distance_pips']) 
-                            / grid_only['max_distance_pips'] * 100)
+                # Comparison (ป้องกัน division by zero)
+                if grid_only['max_distance_pips'] > 0:
+                    reduction = ((grid_only['max_distance_pips'] - with_hg['max_distance_pips']) 
+                                / grid_only['max_distance_pips'] * 100)
+                else:
+                    reduction = 0
                 
                 self.risk_result_text.insert(tk.END, "=" * 80 + "\n")
                 self.risk_result_text.insert(tk.END, "⚖️  COMPARISON:\n")
@@ -956,42 +959,78 @@ class TradingGUI:
         """
         Loop หลักสำหรับ monitoring ระบบ
         ทำงานใน background thread
+        Optimized: ลดการเรียกซ้ำ get_current_price และ update_all_positions
         """
         while not self.stop_monitoring and self.is_running:
+            # API Status Check (หยุดระบบถ้า API error เพราะถูก lock จากภายนอก)
             try:
                 if self.should_report_status():
                     self.report_status()
             except Exception as e:
+                # หยุดการทำงาน ถ้า API error (ระบบถูก lock จากภายนอก)
+                logger.error(f"API Status Error: {e}")
                 self._stop_trading_internal()
                 self.log_message(f"✗ Trading stopped: {e}")
                 # ย้าย messagebox ไปใช้ root.after() เพื่อป้องกัน hang ใน background thread
-                self.root.after(0, lambda err=str(e): messagebox.showerror("Error", err))
+                self.root.after(0, lambda err=str(e): messagebox.showerror("Error", f"Trading stopped: {err}"))
+                break
 
+            # Main Monitoring Section
             try:
-                # อัพเดท Grid
-                grid_manager.update_grid_status()
+                # ดึงราคาเพียงครั้งเดียวแล้วใช้ต่อ (ลดการเรียกซ้ำ)
+                price_info = mt5_connection.get_current_price()
+                if not price_info:
+                    logger.warning("Cannot get price info - skipping this cycle")
+                    threading.Event().wait(0.5)
+                    continue
                 
-                # อัพเดท HG (ถ้าเปิดใช้งาน)
+                current_price = price_info['bid']
+                
+                # อัพเดท positions ครั้งเดียว (ใช้ร่วมกันทั้ง Grid และ HG)
+                try:
+                    position_monitor.update_all_positions()
+                except Exception as e:
+                    logger.error(f"Error updating positions: {e}")
+                    # ยังทำงานต่อ แต่ข้ามส่วนที่ใช้ positions
+                
+                # อัพเดท Grid (มี error handling แยก - ไม่หยุดระบบ)
+                try:
+                    grid_manager.update_grid_status()
+                except Exception as e:
+                    logger.error(f"Error in grid manager: {e}", exc_info=True)
+                    self.root.after(0, lambda err=str(e): self.log_message(f"✗ Grid Error: {err}"))
+                
+                # อัพเดท HG (ถ้าเปิดใช้งาน) - ใช้ราคาที่ดึงไว้แล้ว
                 if config.hg.enabled:
-                    price_info = mt5_connection.get_current_price()
-                    if price_info:
-                        self.hg_manager.manage_multiple_hg(price_info['bid'])
-                
-                # อัพเดท positions
-                position_monitor.update_all_positions()
+                    try:
+                        self.hg_manager.manage_multiple_hg(current_price)
+                    except Exception as e:
+                        logger.error(f"Error in HG manager: {e}", exc_info=True)
+                        self.root.after(0, lambda err=str(e): self.log_message(f"✗ HG Error: {err}"))
                 
                 # ตรวจสอบความเสี่ยง
-                position_monitor.send_alerts()
+                try:
+                    position_monitor.send_alerts()
+                except Exception as e:
+                    logger.error(f"Error in risk alerts: {e}")
                 
-                # อัพเดท GUI
-                self.root.after(0, self.update_display)
+                # อัพเดท GUI (ใช้ root.after เพื่อป้องกัน thread issues)
+                try:
+                    self.root.after(0, self.update_display)
+                except Exception as e:
+                    logger.error(f"Error scheduling GUI update: {e}")
                 
-                # รอ 0.5 วินาที (เร็วขึ้น)
+                # รอ 0.5 วินาที
                 threading.Event().wait(0.5)
                 
             except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                self.root.after(0, lambda err=str(e): self.log_message(f"✗ Error: {err}"))
+                # Error handling สำหรับ main section (ไม่หยุด loop)
+                logger.error(f"Error in monitoring loop: {e}", exc_info=True)
+                import traceback
+                logger.error(traceback.format_exc())
+                self.root.after(0, lambda err=str(e): self.log_message(f"✗ Monitoring Error: {err}"))
+                # รอสักครู่ก่อน retry (ป้องกัน infinite error loop)
+                threading.Event().wait(1.0)
     
     def update_display(self):
         """อัพเดทการแสดงผลใน GUI"""

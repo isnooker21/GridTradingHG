@@ -63,8 +63,8 @@ class MT5Settings:
     symbol: str = "XAUUSD"
     magic_number: int = 123456
     deviation: int = 20        # Slippage ที่ยอมรับได้
-    comment_grid: str = "GridBot"
-    comment_hg: str = "HG"
+    comment_grid: str = "Grid_AI"
+    comment_hg: str = "HG_AI"
     
 @dataclass
 class RiskSettings:

@@ -262,14 +262,26 @@ class MT5Connection:
                 if order_type.lower() == "buy":
                     trade_type = mt5.ORDER_TYPE_BUY
                     if price is None:
-                        price = mt5.symbol_info_tick(self.symbol).ask
+                        tick = mt5.symbol_info_tick(self.symbol)
+                        if tick is None:
+                            logger.error(f"Cannot get tick data for {self.symbol}")
+                            return None
+                        price = tick.ask
                 else:  # sell
                     trade_type = mt5.ORDER_TYPE_SELL
                     if price is None:
-                        price = mt5.symbol_info_tick(self.symbol).bid
+                        tick = mt5.symbol_info_tick(self.symbol)
+                        if tick is None:
+                            logger.error(f"Cannot get tick data for {self.symbol}")
+                            return None
+                        price = tick.bid
                 
-                # ปรับ volume ให้ถูกต้องตาม step
-                volume = round(volume / symbol_info.volume_step) * symbol_info.volume_step
+                # ปรับ volume ให้ถูกต้องตาม step (ป้องกัน division by zero)
+                if symbol_info.volume_step > 0:
+                    volume = round(volume / symbol_info.volume_step) * symbol_info.volume_step
+                else:
+                    logger.warning(f"volume_step is 0 for {self.symbol}, using original volume")
+                    # ถ้า volume_step เป็น 0 ให้ใช้ volume เดิม
                 
                 # กำหนด type_filling
                 type_filling = self._get_filling_mode(symbol_info)
@@ -374,10 +386,18 @@ class MT5Connection:
             # กำหนดประเภทการปิด (ตรงข้ามกับการเปิด)
             if position.type == mt5.ORDER_TYPE_BUY:
                 trade_type = mt5.ORDER_TYPE_SELL
-                price = mt5.symbol_info_tick(self.symbol).bid
+                tick = mt5.symbol_info_tick(self.symbol)
+                if tick is None:
+                    logger.error(f"Cannot get tick data for {self.symbol}")
+                    return False
+                price = tick.bid
             else:
                 trade_type = mt5.ORDER_TYPE_BUY
-                price = mt5.symbol_info_tick(self.symbol).ask
+                tick = mt5.symbol_info_tick(self.symbol)
+                if tick is None:
+                    logger.error(f"Cannot get tick data for {self.symbol}")
+                    return False
+                price = tick.ask
             
             # กำหนด type_filling
             symbol_info = mt5.symbol_info(self.symbol)

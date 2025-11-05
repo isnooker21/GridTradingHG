@@ -44,7 +44,7 @@ class GridManager:
             buy_tp_distance = config.pips_to_price(config.grid.buy_take_profit)
             buy_tp = current_price + buy_tp_distance
             
-            comment = f"{config.mt5.comment_grid}_initial_buy"
+            comment = config.mt5.comment_grid
             ticket = mt5_connection.place_order(
                 order_type='buy',
                 volume=config.grid.buy_lot_size,
@@ -70,7 +70,7 @@ class GridManager:
             sell_tp_distance = config.pips_to_price(config.grid.sell_take_profit)
             sell_tp = current_price - sell_tp_distance
             
-            comment = f"{config.mt5.comment_grid}_initial_sell"
+            comment = config.mt5.comment_grid
             ticket = mt5_connection.place_order(
                 order_type='sell',
                 volume=config.grid.sell_lot_size,
@@ -297,7 +297,7 @@ class GridManager:
                 self.order_counter += 1
                 level_key = f"buy_{self.order_counter}"
             
-            comment = f"{config.mt5.comment_grid}_{level_key}"
+            comment = config.mt5.comment_grid
             
             # วาง order
             ticket = mt5_connection.place_order(
@@ -375,7 +375,7 @@ class GridManager:
                 self.order_counter += 1
                 level_key = f"sell_{self.order_counter}"
             
-            comment = f"{config.mt5.comment_grid}_{level_key}"
+            comment = config.mt5.comment_grid
             
             # วาง order
             ticket = mt5_connection.place_order(
@@ -661,30 +661,27 @@ class GridManager:
         # จดจำ Grid positions ที่มีอยู่
         restored_count = 0
         for pos in grid_positions:
-            # ดึง level_key จาก comment
+            # ตรวจสอบว่าเป็น Grid position หรือไม่ (จาก comment)
             comment = pos['comment']
             if config.mt5.comment_grid in comment:
-                # แยก level_key จาก comment (format: "GridBot_initial_buy", "GridBot_buy_0", etc.)
-                parts = comment.split('_')
-                if len(parts) >= 3:
-                    # ดึง level_key ที่เหลือหลังจาก comment_grid
-                    level_key = '_'.join(parts[1:])  # เอาตั้งแต่ส่วนที่ 2 เป็นต้นไป
-                    
-                    # บันทึกลง placed_orders
-                    self.placed_orders[level_key] = pos['ticket']
-                    
-                    # เพิ่มลง grid_levels
-                    self.grid_levels.append({
-                        'level_key': level_key,
-                        'price': pos['open_price'],
-                        'type': pos['type'],
-                        'tp': pos['tp'],
-                        'placed': True,
-                        'ticket': pos['ticket']
-                    })
-                    
-                    restored_count += 1
-                    logger.info(f"Restored Grid: {level_key} | Ticket: {pos['ticket']} | Price: {pos['open_price']:.2f}")
+                # สร้าง level_key ใหม่โดยใช้ ticket number (เพราะ comment ไม่มี level_key แล้ว)
+                level_key = f"{pos['type']}_{pos['ticket']}"
+                
+                # บันทึกลง placed_orders
+                self.placed_orders[level_key] = pos['ticket']
+                
+                # เพิ่มลง grid_levels
+                self.grid_levels.append({
+                    'level_key': level_key,
+                    'price': pos['open_price'],
+                    'type': pos['type'],
+                    'tp': pos['tp'],
+                    'placed': True,
+                    'ticket': pos['ticket']
+                })
+                
+                restored_count += 1
+                logger.info(f"Restored Grid: {level_key} | Ticket: {pos['ticket']} | Price: {pos['open_price']:.2f}")
         
         logger.info(f"✓ Restored {restored_count} Grid positions")
         return restored_count
