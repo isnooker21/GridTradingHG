@@ -5,6 +5,7 @@ import configparser
 import os
 from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime
 
 @dataclass
 class GridSettings:
@@ -21,6 +22,11 @@ class GridSettings:
     sell_grid_distance: int = 50   # ระยะห่าง Grid Sell (pips)
     sell_lot_size: float = 0.01    # ขนาด lot Sell
     sell_take_profit: int = 50     # Take Profit Sell (pips)
+    
+    # Auto Mode Settings
+    auto_mode: bool = False
+    risk_profile: str = "moderate"  # very_conservative, conservative, moderate, aggressive, very_aggressive
+    last_auto_update: Optional[datetime] = None
     
     # Backward compatibility (ค่าเดิม)
     grid_distance: int = 50
@@ -55,7 +61,7 @@ class HGSettings:
     max_hg_levels: int = 10
     hg_distance: int = 200
     hg_sl_trigger: int = 100
-    hg_multiplier: float = 1.2
+    hg_multiplier: float = 1.2  # ใช้ในการคำนวณ HG Lot (auto mode)
     
 @dataclass
 class MT5Settings:
@@ -65,6 +71,7 @@ class MT5Settings:
     deviation: int = 20        # Slippage ที่ยอมรับได้
     comment_grid: str = "Grid_AI"
     comment_hg: str = "HG_AI"
+    comment_auto: str = "Full_AutoAI"  # Comment สำหรับ Auto Mode
     
 @dataclass
 class RiskSettings:
@@ -110,6 +117,18 @@ class Config:
                 self.grid.sell_grid_distance = parser.getint('Grid', 'sell_grid_distance', fallback=200)
                 self.grid.sell_lot_size = parser.getfloat('Grid', 'sell_lot_size', fallback=0.01)
                 self.grid.sell_take_profit = parser.getint('Grid', 'sell_take_profit', fallback=100)
+                
+                # Auto Mode Settings
+                self.grid.auto_mode = parser.getboolean('Grid', 'auto_mode', fallback=False)
+                self.grid.risk_profile = parser.get('Grid', 'risk_profile', fallback='moderate')
+                last_update_str = parser.get('Grid', 'last_auto_update', fallback='')
+                if last_update_str:
+                    try:
+                        self.grid.last_auto_update = datetime.fromisoformat(last_update_str)
+                    except:
+                        self.grid.last_auto_update = None
+                else:
+                    self.grid.last_auto_update = None
                 
                 # Backward compatibility
                 self.grid.grid_distance = parser.getint('Grid', 'grid_distance', fallback=200)
@@ -174,6 +193,10 @@ class Config:
             'sell_grid_distance': str(self.grid.sell_grid_distance),
             'sell_lot_size': str(self.grid.sell_lot_size),
             'sell_take_profit': str(self.grid.sell_take_profit),
+            # Auto Mode Settings
+            'auto_mode': str(self.grid.auto_mode),
+            'risk_profile': self.grid.risk_profile,
+            'last_auto_update': self.grid.last_auto_update.isoformat() if self.grid.last_auto_update else '',
             # Backward compatibility
             'grid_distance': str(self.grid.grid_distance),
             'lot_size': str(self.grid.lot_size),

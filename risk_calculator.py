@@ -119,7 +119,7 @@ class RiskCalculator:
                 prev_drawdown = sum(
                     self.calculate_drawdown_for_position(
                         p['distance'], prev_distance, p['pip_value'], p['type']
-                    ) for p in positions[:-1] if direction != "both" else positions[:-2]
+                    ) for p in (positions[:-2] if direction == "both" else positions[:-1])
                 )
                 prev_margin = total_margin - (margin_per_buy + margin_per_sell if direction == "both" else (margin_per_buy if direction == "buy" else margin_per_sell))
                 

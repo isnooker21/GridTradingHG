@@ -150,8 +150,8 @@ class HGManager:
         # คำนวณ lot size (แยก Buy/Sell)
         hg_lot = self.calculate_hg_lot(hg_info['type'])
         
-        # กำหนด comment
-        comment = config.mt5.comment_hg
+        # กำหนด comment ตาม mode
+        comment = config.mt5.comment_auto if config.grid.auto_mode else config.mt5.comment_hg
         
         # วาง order (ไม่มี TP เพราะจะใช้วิธี breakeven)
         ticket = mt5_connection.place_order(

@@ -37,6 +37,10 @@ class TradingGUI:
         # สร้าง HG Manager
         self.hg_manager = HGManager()
         
+        # 🆕 Auto Mode: ตัวนับสำหรับ refresh (ทุก 60 วินาที = 120 cycles)
+        self.auto_refresh_counter = 0
+        self.auto_refresh_interval = 120  # รอบ (120 * 0.5s = 60 วินาที)
+        
         # สร้าง GUI components
         self.create_widgets()
         
@@ -71,9 +75,21 @@ class TradingGUI:
         main_frame = ttk.Frame(self.trading_tab, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
+        # ============ Mode Selection ============
+        mode_frame = ttk.LabelFrame(main_frame, text="🎮 Trading Mode", padding="10")
+        mode_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        
+        self.auto_mode_var = tk.BooleanVar(value=False)
+        ttk.Radiobutton(mode_frame, text="📝 Manual Mode", 
+                       variable=self.auto_mode_var, value=False,
+                       command=self.toggle_mode).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(mode_frame, text="🤖 Full Auto Mode", 
+                       variable=self.auto_mode_var, value=True,
+                       command=self.toggle_mode).pack(side=tk.LEFT, padx=10)
+        
         # ============ Connection Status ============
         status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="10")
-        status_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         # Row 0: Account Selection
         ttk.Label(status_frame, text="Select Account:").grid(row=0, column=0, sticky=tk.W)
@@ -139,14 +155,21 @@ class TradingGUI:
         self.expiry_date_label.grid(row=3, column=7, sticky=tk.W, padx=5, pady=(2, 0))
         self.expiry_date_var.trace_add("write", format_expiry_date)
 
+        # ============ Auto Mode Display (ซ่อนตอนเริ่มต้น) ============
+        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="10")
+        self.auto_display_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
+        
+        self.create_auto_mode_ui()
+        
         # ============ Grid Settings ============
-        grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="10")
-        grid_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N), pady=5, padx=(0, 5))
+        self.grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="10")
+        self.grid_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N), pady=5, padx=(0, 5))
         
         # Direction
-        ttk.Label(grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
         self.direction_var = tk.StringVar(value="both")
-        direction_frame = ttk.Frame(grid_frame)
+        direction_frame = ttk.Frame(self.grid_frame)
         direction_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, pady=3)
         ttk.Radiobutton(direction_frame, text="Buy Only", variable=self.direction_var, 
                        value="buy").pack(side=tk.LEFT)
@@ -156,46 +179,46 @@ class TradingGUI:
                        value="both").pack(side=tk.LEFT)
         
         # Headers
-        ttk.Label(grid_frame, text="", width=18).grid(row=1, column=0, pady=3)
-        ttk.Label(grid_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
+        ttk.Label(self.grid_frame, text="", width=18).grid(row=1, column=0, pady=3)
+        ttk.Label(self.grid_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
                  foreground="green").grid(row=1, column=1, pady=3)
-        ttk.Label(grid_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
+        ttk.Label(self.grid_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
                  foreground="red").grid(row=1, column=2, pady=3)
         
         # Grid Distance
-        ttk.Label(grid_frame, text="Grid Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Grid Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
         self.buy_grid_distance_var = tk.IntVar(value=50)
-        ttk.Entry(grid_frame, textvariable=self.buy_grid_distance_var, width=12).grid(row=2, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_grid_distance_var, width=12).grid(row=2, column=1, pady=3, padx=2)
         self.sell_grid_distance_var = tk.IntVar(value=50)
-        ttk.Entry(grid_frame, textvariable=self.sell_grid_distance_var, width=12).grid(row=2, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_grid_distance_var, width=12).grid(row=2, column=2, pady=3, padx=2)
         
         # Lot Size
-        ttk.Label(grid_frame, text="Lot Size:").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Lot Size:").grid(row=3, column=0, sticky=tk.W, pady=3)
         self.buy_lot_size_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(grid_frame, textvariable=self.buy_lot_size_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_lot_size_var, width=12).grid(row=3, column=1, pady=3, padx=2)
         self.sell_lot_size_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(grid_frame, textvariable=self.sell_lot_size_var, width=12).grid(row=3, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_lot_size_var, width=12).grid(row=3, column=2, pady=3, padx=2)
         
         # Take Profit
-        ttk.Label(grid_frame, text="Take Profit (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Take Profit (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
         self.buy_tp_var = tk.IntVar(value=50)
-        ttk.Entry(grid_frame, textvariable=self.buy_tp_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_tp_var, width=12).grid(row=4, column=1, pady=3, padx=2)
         self.sell_tp_var = tk.IntVar(value=50)
-        ttk.Entry(grid_frame, textvariable=self.sell_tp_var, width=12).grid(row=4, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_tp_var, width=12).grid(row=4, column=2, pady=3, padx=2)
         
         # ============ HG Settings ============
-        hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="10")
-        hg_frame.grid(row=1, column=1, sticky=(tk.W, tk.E, tk.N), pady=5)
+        self.hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="10")
+        self.hg_frame.grid(row=2, column=1, sticky=(tk.W, tk.E, tk.N), pady=5)
         
         # HG Enable/Disable
         self.hg_enabled_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(hg_frame, text="Enable HG System", 
+        ttk.Checkbutton(self.hg_frame, text="Enable HG System", 
                        variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=3)
         
         # HG Direction
-        ttk.Label(hg_frame, text="HG Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
         self.hg_direction_var = tk.StringVar(value="buy")
-        hg_direction_frame = ttk.Frame(hg_frame)
+        hg_direction_frame = ttk.Frame(self.hg_frame)
         hg_direction_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=3)
         ttk.Radiobutton(hg_direction_frame, text="Buy Only", variable=self.hg_direction_var, 
                        value="buy").pack(side=tk.LEFT)
@@ -206,57 +229,57 @@ class TradingGUI:
         
         
         # Headers
-        ttk.Label(hg_frame, text="", width=18).grid(row=2, column=0, pady=3)
-        ttk.Label(hg_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
+        ttk.Label(self.hg_frame, text="", width=18).grid(row=2, column=0, pady=3)
+        ttk.Label(self.hg_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
                  foreground="green").grid(row=2, column=1, pady=3)
-        ttk.Label(hg_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
+        ttk.Label(self.hg_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
                  foreground="red").grid(row=2, column=2, pady=3)
         
         # HG Distance
-        ttk.Label(hg_frame, text="HG Distance (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG Distance (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
         self.buy_hg_distance_var = tk.IntVar(value=200)
-        ttk.Entry(hg_frame, textvariable=self.buy_hg_distance_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_distance_var, width=12).grid(row=3, column=1, pady=3, padx=2)
         self.sell_hg_distance_var = tk.IntVar(value=2000)
-        ttk.Entry(hg_frame, textvariable=self.sell_hg_distance_var, width=12).grid(row=3, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_distance_var, width=12).grid(row=3, column=2, pady=3, padx=2)
         
         # HG SL Trigger
-        ttk.Label(hg_frame, text="HG SL Trigger (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG SL Trigger (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
         self.buy_hg_sl_trigger_var = tk.IntVar(value=100)
-        ttk.Entry(hg_frame, textvariable=self.buy_hg_sl_trigger_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_sl_trigger_var, width=12).grid(row=4, column=1, pady=3, padx=2)
         self.sell_hg_sl_trigger_var = tk.IntVar(value=1000)
-        ttk.Entry(hg_frame, textvariable=self.sell_hg_sl_trigger_var, width=12).grid(row=4, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_sl_trigger_var, width=12).grid(row=4, column=2, pady=3, padx=2)
         
         # HG Multiplier
-        ttk.Label(hg_frame, text="HG Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=3)
         self.buy_hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(hg_frame, textvariable=self.buy_hg_multiplier_var, width=12).grid(row=5, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_multiplier_var, width=12).grid(row=5, column=1, pady=3, padx=2)
         self.sell_hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(hg_frame, textvariable=self.sell_hg_multiplier_var, width=12).grid(row=5, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_multiplier_var, width=12).grid(row=5, column=2, pady=3, padx=2)
         
         # HG Initial Lot
-        ttk.Label(hg_frame, text="HG Initial Lot:").grid(row=6, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG Initial Lot:").grid(row=6, column=0, sticky=tk.W, pady=3)
         self.buy_hg_initial_lot_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(hg_frame, textvariable=self.buy_hg_initial_lot_var, width=12).grid(row=6, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_initial_lot_var, width=12).grid(row=6, column=1, pady=3, padx=2)
         self.sell_hg_initial_lot_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(hg_frame, textvariable=self.sell_hg_initial_lot_var, width=12).grid(row=6, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_initial_lot_var, width=12).grid(row=6, column=2, pady=3, padx=2)
         
         # SL Buffer
-        ttk.Label(hg_frame, text="SL Buffer (pips):").grid(row=7, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="SL Buffer (pips):").grid(row=7, column=0, sticky=tk.W, pady=3)
         self.buy_sl_buffer_var = tk.IntVar(value=10)
-        ttk.Entry(hg_frame, textvariable=self.buy_sl_buffer_var, width=12).grid(row=7, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_sl_buffer_var, width=12).grid(row=7, column=1, pady=3, padx=2)
         self.sell_sl_buffer_var = tk.IntVar(value=20)
-        ttk.Entry(hg_frame, textvariable=self.sell_sl_buffer_var, width=12).grid(row=7, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_sl_buffer_var, width=12).grid(row=7, column=2, pady=3, padx=2)
         
         # Max HG Levels
-        ttk.Label(hg_frame, text="Max HG Levels:").grid(row=8, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="Max HG Levels:").grid(row=8, column=0, sticky=tk.W, pady=3)
         self.buy_max_hg_levels_var = tk.IntVar(value=10)
-        ttk.Entry(hg_frame, textvariable=self.buy_max_hg_levels_var, width=12).grid(row=8, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_max_hg_levels_var, width=12).grid(row=8, column=1, pady=3, padx=2)
         self.sell_max_hg_levels_var = tk.IntVar(value=10)
-        ttk.Entry(hg_frame, textvariable=self.sell_max_hg_levels_var, width=12).grid(row=8, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_max_hg_levels_var, width=12).grid(row=8, column=2, pady=3, padx=2)
         
         # ============ Controls ============
         control_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="10")
-        control_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        control_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         self.start_button = ttk.Button(control_frame, text="▶ Start Trading", 
                                        command=self.start_trading, style="Start.TButton")
@@ -280,7 +303,7 @@ class TradingGUI:
         
         # ============ Status Display ============
         status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="10")
-        status_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        status_display_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         # สร้าง grid สำหรับแสดงข้อมูล
         info_frame = ttk.Frame(status_display_frame)
@@ -322,7 +345,7 @@ class TradingGUI:
         
         # ============ Log Display ============
         log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="10")
-        log_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        log_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         self.log_text = scrolledtext.ScrolledText(log_frame, height=10, width=80, 
                                                   wrap=tk.WORD, font=("Consolas", 9))
@@ -333,13 +356,303 @@ class TradingGUI:
         self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(3, weight=1)
         main_frame.rowconfigure(4, weight=1)
+        main_frame.rowconfigure(5, weight=1)
         
         # สไตล์ปุ่ม
         style = ttk.Style()
         style.configure("Start.TButton", foreground="green")
         style.configure("Emergency.TButton", foreground="red")
+    
+    def create_auto_mode_ui(self):
+        """สร้าง UI สำหรับ Auto Mode"""
+        # สร้าง 2 columns หลัก
+        left_col = ttk.Frame(self.auto_display_frame)
+        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        
+        right_col = ttk.Frame(self.auto_display_frame)
+        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        
+        # ===== LEFT COLUMN =====
+        
+        # Market Analysis (กระชับขึ้น)
+        ttk.Label(left_col, text="📈 MARKET ANALYSIS", 
+                 font=("Arial", 9, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+        
+        # Trend
+        ttk.Label(left_col, text="Trend:", font=("Arial", 8)).grid(row=1, column=0, sticky=tk.W, pady=1)
+        self.auto_trend_var = tk.StringVar(value="-")
+        self.auto_trend_label = ttk.Label(left_col, textvariable=self.auto_trend_var,
+                                          font=("Arial", 8, "bold"), foreground="blue")
+        self.auto_trend_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # ATR
+        ttk.Label(left_col, text="ATR(14):", font=("Arial", 8)).grid(row=2, column=0, sticky=tk.W, pady=1)
+        self.auto_atr_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_atr_var, font=("Arial", 8)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # EMA(20)
+        ttk.Label(left_col, text="EMA(20):", font=("Arial", 8)).grid(row=3, column=0, sticky=tk.W, pady=1)
+        self.auto_ema_fast_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_ema_fast_var, font=("Arial", 8)).grid(row=3, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # EMA(50)
+        ttk.Label(left_col, text="EMA(50):", font=("Arial", 8)).grid(row=4, column=0, sticky=tk.W, pady=1)
+        self.auto_ema_slow_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_ema_slow_var, font=("Arial", 8)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Last Update
+        ttk.Label(left_col, text="Updated:", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=1)
+        self.auto_update_time_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_update_time_var,
+                 foreground="gray", font=("Arial", 7)).grid(row=5, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Separator
+        ttk.Separator(left_col, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        
+        # Auto Calculated Settings (กระชับขึ้น)
+        ttk.Label(left_col, text="⚙️ AUTO SETTINGS", 
+                 font=("Arial", 9, "bold")).grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+        
+        # Grid Distance
+        ttk.Label(left_col, text="Grid:", font=("Arial", 8)).grid(row=8, column=0, sticky=tk.W, pady=1)
+        self.auto_grid_dist_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_grid_dist_var,
+                 font=("Arial", 8, "bold"), foreground="green").grid(row=8, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # HG Distance
+        ttk.Label(left_col, text="HG:", font=("Arial", 8)).grid(row=9, column=0, sticky=tk.W, pady=1)
+        self.auto_hg_dist_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_hg_dist_var,
+                 font=("Arial", 8, "bold"), foreground="orange").grid(row=9, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Direction
+        ttk.Label(left_col, text="Direction:", font=("Arial", 8)).grid(row=10, column=0, sticky=tk.W, pady=1)
+        self.auto_direction_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_direction_var,
+                 font=("Arial", 8, "bold"), foreground="blue").grid(row=10, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Separator
+        ttk.Separator(left_col, orient='horizontal').grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        
+        # Risk Profile Selection (กระชับขึ้น)
+        ttk.Label(left_col, text="🛡️ RISK PROFILE", 
+                 font=("Arial", 9, "bold")).grid(row=12, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+        
+        self.risk_profile_var = tk.StringVar(value="moderate")
+        
+        ttk.Radiobutton(left_col, text="Very Conservative", 
+                       variable=self.risk_profile_var, value="very_conservative").grid(row=13, column=0, columnspan=2, sticky=tk.W, pady=1)
+        ttk.Radiobutton(left_col, text="Conservative", 
+                       variable=self.risk_profile_var, value="conservative").grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=1)
+        ttk.Radiobutton(left_col, text="Moderate ⭐", 
+                       variable=self.risk_profile_var, value="moderate").grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=1)
+        ttk.Radiobutton(left_col, text="Aggressive", 
+                       variable=self.risk_profile_var, value="aggressive").grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=1)
+        ttk.Radiobutton(left_col, text="Very Aggressive", 
+                       variable=self.risk_profile_var, value="very_aggressive").grid(row=17, column=0, columnspan=2, sticky=tk.W, pady=1)
+        
+        # Refresh Button
+        ttk.Button(left_col, text="🔄 Refresh Analysis", 
+                  command=self.refresh_auto_analysis).grid(row=18, column=0, columnspan=2, pady=(8, 0), sticky=(tk.W, tk.E))
+        
+        # ===== RIGHT COLUMN =====
+        
+        # Survivability Analysis (ลดความสูง)
+        ttk.Label(right_col, text="📊 SURVIVABILITY ANALYSIS", 
+                 font=("Arial", 9, "bold")).grid(row=0, column=0, sticky=tk.W, pady=(0, 3))
+        
+        self.survivability_text = scrolledtext.ScrolledText(right_col, height=22, width=55,
+                                                            wrap=tk.WORD, font=("Consolas", 8))
+        self.survivability_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure column weights
+        self.auto_display_frame.columnconfigure(0, weight=1)
+        self.auto_display_frame.columnconfigure(1, weight=2)
+        self.auto_display_frame.rowconfigure(0, weight=1)
+    
+    def toggle_mode(self):
+        """สลับระหว่าง Manual และ Auto Mode"""
+        if self.auto_mode_var.get():
+            # เปลี่ยนเป็น Auto Mode
+            self.auto_display_frame.grid()
+            self.grid_frame.grid_remove()
+            self.hg_frame.grid_remove()
+            self.refresh_auto_analysis()
+            self.log_message("✓ Switched to Full Auto Mode")
+        else:
+            # เปลี่ยนเป็น Manual Mode
+            self.auto_display_frame.grid_remove()
+            self.grid_frame.grid()
+            self.hg_frame.grid()
+            self.log_message("✓ Switched to Manual Mode")
+    
+    def refresh_auto_analysis(self):
+        """อัพเดทข้อมูลใน Auto Mode (Full - รวม Survivability)"""
+        try:
+            from auto_config_manager import auto_config_manager
+            from trend_detector import trend_detector
+            from atr_calculator import atr_calculator
+            
+            # ตรวจสอบการเชื่อมต่อ MT5
+            from mt5_connection import mt5_connection
+            if not mt5_connection.connected:
+                self.log_message("✗ Please connect to MT5 first")
+                return
+            
+            # ดึงข้อมูลตลาด
+            atr_info = atr_calculator.get_atr_info()
+            trend_info = trend_detector.get_trend_info()
+            
+            # แสดง Market Analysis
+            self.auto_atr_var.set(f"{atr_info['atr']:.1f} pips")
+            self.auto_ema_fast_var.set(f"{trend_info['ema_fast']:.2f}")
+            self.auto_ema_slow_var.set(f"{trend_info['ema_slow']:.2f}")
+            
+            trend_text = f"{trend_info['trend'].upper()} ({trend_info['strength']})"
+            self.auto_trend_var.set(trend_text)
+            
+            # เปลี่ยนสี Trend
+            if trend_info['trend'] == 'buy':
+                self.auto_trend_label.configure(foreground="green")
+            elif trend_info['trend'] == 'sell':
+                self.auto_trend_label.configure(foreground="red")
+            else:
+                self.auto_trend_label.configure(foreground="blue")
+            
+            # แสดงเวลาอัพเดท
+            from datetime import timedelta
+            self.auto_update_time_var.set(
+                atr_info['timestamp'].strftime("%H:%M:%S") + 
+                f" (Next: {(atr_info['timestamp'] + timedelta(minutes=15)).strftime('%H:%M:%S')})"
+            )
+            
+            # คำนวณ Auto Settings
+            settings = auto_config_manager.calculate_auto_settings(
+                risk_profile=self.risk_profile_var.get()
+            )
+            
+            # แสดง Auto Calculated Settings
+            self.auto_grid_dist_var.set(f"{settings['buy_grid_distance']} pips")
+            self.auto_hg_dist_var.set(f"{settings['buy_hg_distance']} pips")
+            self.auto_direction_var.set(settings['direction'].upper())
+            
+            # คำนวณ Survivability
+            account_info = mt5_connection.get_account_info()
+            price_info = mt5_connection.get_current_price()
+            
+            if account_info and price_info:
+                survival = auto_config_manager.calculate_survivability(
+                    balance=account_info['balance'],
+                    price=price_info['bid'],
+                    leverage=account_info.get('leverage', 100),
+                    settings=settings
+                )
+                
+                # แสดงผล Survivability
+                self.display_survivability(survival, account_info)
+            
+            self.log_message("✓ Auto analysis refreshed")
+            
+        except Exception as e:
+            logger.error(f"Error refreshing auto analysis: {e}")
+            self.log_message(f"✗ Error: {e}")
+    
+    def refresh_auto_analysis_light(self):
+        """อัพเดทข้อมูลใน Auto Mode แบบเบา (ไม่คำนวณ Survivability)"""
+        try:
+            from auto_config_manager import auto_config_manager
+            from trend_detector import trend_detector
+            from atr_calculator import atr_calculator
+            
+            # ตรวจสอบการเชื่อมต่อ MT5
+            from mt5_connection import mt5_connection
+            if not mt5_connection.connected:
+                return
+            
+            # ดึงข้อมูลตลาด (ใช้ cache ถ้ามี)
+            atr_info = atr_calculator.get_atr_info()
+            trend_info = trend_detector.get_trend_info()
+            
+            # แสดง Market Analysis
+            self.auto_atr_var.set(f"{atr_info['atr']:.1f} pips")
+            self.auto_ema_fast_var.set(f"{trend_info['ema_fast']:.2f}")
+            self.auto_ema_slow_var.set(f"{trend_info['ema_slow']:.2f}")
+            
+            trend_text = f"{trend_info['trend'].upper()} ({trend_info['strength']})"
+            self.auto_trend_var.set(trend_text)
+            
+            # เปลี่ยนสี Trend
+            if trend_info['trend'] == 'buy':
+                self.auto_trend_label.configure(foreground="green")
+            elif trend_info['trend'] == 'sell':
+                self.auto_trend_label.configure(foreground="red")
+            else:
+                self.auto_trend_label.configure(foreground="blue")
+            
+            # แสดงเวลาอัพเดท
+            from datetime import timedelta
+            self.auto_update_time_var.set(
+                atr_info['timestamp'].strftime("%H:%M:%S") + 
+                f" (Next: {(atr_info['timestamp'] + timedelta(minutes=15)).strftime('%H:%M:%S')})"
+            )
+            
+            # คำนวณ Auto Settings (เร็ว)
+            settings = auto_config_manager.calculate_auto_settings(
+                risk_profile=self.risk_profile_var.get()
+            )
+            
+            # แสดง Auto Calculated Settings
+            self.auto_grid_dist_var.set(f"{settings['buy_grid_distance']} pips")
+            self.auto_hg_dist_var.set(f"{settings['buy_hg_distance']} pips")
+            self.auto_direction_var.set(settings['direction'].upper())
+            
+            # ไม่คำนวณ Survivability เพื่อความเร็ว
+            
+        except Exception as e:
+            logger.error(f"Error refreshing auto analysis (light): {e}")
+    
+    def display_survivability(self, survival, account_info):
+        """แสดงผล Survivability Analysis"""
+        self.survivability_text.config(state=tk.NORMAL)
+        self.survivability_text.delete(1.0, tk.END)
+        
+        text = f"""╔═══════════════════════════════════════════════════╗
+║        📊 SURVIVABILITY ANALYSIS                  ║
+╠═══════════════════════════════════════════════════╣
+
+💰 ACCOUNT INFO:
+   Balance:      ${account_info['balance']:,.2f}
+   Equity:       ${account_info['equity']:,.2f}
+   Used Margin:  ${account_info['margin']:,.2f} ({account_info['margin']/account_info['equity']*100:.1f}%)
+   Free Margin:  ${account_info['free_margin']:,.2f}
+
+─────────────────────────────────────────────────────
+
+🎯 SYSTEM CAPACITY (Worst Case):
+   Max Distance:     {survival['max_distance_pips']:,} pips
+   Max Grid Levels:  {survival['max_grid_levels']} levels
+   Max HG Levels:    {survival['max_hg_levels']} levels
+   
+   Max Margin Used:  ${survival['max_margin']:,.2f}
+   Max Drawdown:     ${survival['max_drawdown']:,.2f}
+   Final Equity:     ${survival['final_equity']:,.2f}
+   Margin Level:     {survival['final_margin_level']:.1f}%
+
+   Status:           {survival['status']}
+
+─────────────────────────────────────────────────────
+
+⚠️  IMPORTANT:
+   • Worst case: ราคาเดินทางเดียวไม่กลับ
+   • ไม่รวม Spread/Commission
+   • แนะนำเหลือ Buffer 30-50%
+
+╚═══════════════════════════════════════════════════╝
+"""
+        
+        self.survivability_text.insert(tk.END, text)
+        self.survivability_text.config(state=tk.DISABLED)
     
     def create_risk_calculator_tab(self):
         """สร้าง content สำหรับ Risk Calculator Tab"""
@@ -630,44 +943,59 @@ class TradingGUI:
 
     def _save_settings(self):
         """บันทึกการตั้งค่า (internal)"""
-        # Validation: เตือนถ้า Take Profit มากกว่า Grid Distance
-        buy_grid_dist = self.buy_grid_distance_var.get()
-        buy_tp = self.buy_tp_var.get()
-        sell_grid_dist = self.sell_grid_distance_var.get()
-        sell_tp = self.sell_tp_var.get()
-        
-        warnings = []
-        if buy_tp > buy_grid_dist:
-            warnings.append(f"Buy TP ({buy_tp}) > Buy Grid Distance ({buy_grid_dist})")
-        if sell_tp > sell_grid_dist:
-            warnings.append(f"Sell TP ({sell_tp}) > Sell Grid Distance ({sell_grid_dist})")
-        
-        if warnings:
-            response = messagebox.askyesno(
-                "⚠️ Warning",
-                "พบปัญหา:\n" + "\n".join(warnings) + "\n\n" +
-                "แนะนำ: TP ควรน้อยกว่าหรือเท่ากับ Grid Distance\n" +
-                "ต้องการบันทึกต่อไหม?"
-            )
-            if not response:
-                return
+        # Validation: เตือนถ้า Take Profit มากกว่า Grid Distance (เฉพาะ Manual Mode)
+        if not self.auto_mode_var.get():
+            buy_grid_dist = self.buy_grid_distance_var.get()
+            buy_tp = self.buy_tp_var.get()
+            sell_grid_dist = self.sell_grid_distance_var.get()
+            sell_tp = self.sell_tp_var.get()
+            
+            warnings = []
+            if buy_tp > buy_grid_dist:
+                warnings.append(f"Buy TP ({buy_tp}) > Buy Grid Distance ({buy_grid_dist})")
+            if sell_tp > sell_grid_dist:
+                warnings.append(f"Sell TP ({sell_tp}) > Sell Grid Distance ({sell_grid_dist})")
+            
+            if warnings:
+                response = messagebox.askyesno(
+                    "⚠️ Warning",
+                    "พบปัญหา:\n" + "\n".join(warnings) + "\n\n" +
+                    "แนะนำ: TP ควรน้อยกว่าหรือเท่ากับ Grid Distance\n" +
+                    "ต้องการบันทึกต่อไหม?"
+                )
+                if not response:
+                    return
         
         # อัพเดทค่าใน config
-        config.update_grid_settings(
-            direction=self.direction_var.get(),
-            # Buy Settings
-            buy_grid_distance=buy_grid_dist,
-            buy_lot_size=self.buy_lot_size_var.get(),
-            buy_take_profit=buy_tp,
-            # Sell Settings
-            sell_grid_distance=sell_grid_dist,
-            sell_lot_size=self.sell_lot_size_var.get(),
-            sell_take_profit=sell_tp,
-            # Backward compatibility
-            grid_distance=buy_grid_dist,  # ใช้ค่า buy เป็น default
-            lot_size=self.buy_lot_size_var.get(),
-            take_profit=buy_tp
-        )
+        if self.auto_mode_var.get():
+            # Auto Mode: บันทึกเฉพาะ risk_profile และ auto_mode
+            config.update_grid_settings(
+                auto_mode=True,
+                risk_profile=self.risk_profile_var.get()
+            )
+        else:
+            # Manual Mode: บันทึกค่าทั้งหมด
+            buy_grid_dist = self.buy_grid_distance_var.get()
+            buy_tp = self.buy_tp_var.get()
+            sell_grid_dist = self.sell_grid_distance_var.get()
+            sell_tp = self.sell_tp_var.get()
+            
+            config.update_grid_settings(
+                auto_mode=False,
+                direction=self.direction_var.get(),
+                # Buy Settings
+                buy_grid_distance=buy_grid_dist,
+                buy_lot_size=self.buy_lot_size_var.get(),
+                buy_take_profit=buy_tp,
+                # Sell Settings
+                sell_grid_distance=sell_grid_dist,
+                sell_lot_size=self.sell_lot_size_var.get(),
+                sell_take_profit=sell_tp,
+                # Backward compatibility
+                grid_distance=buy_grid_dist,  # ใช้ค่า buy เป็น default
+                lot_size=self.buy_lot_size_var.get(),
+                take_profit=buy_tp
+            )
         
         config.update_hg_settings(
             enabled=self.hg_enabled_var.get(),
@@ -700,6 +1028,11 @@ class TradingGUI:
     
     def load_settings_to_gui(self):
         """โหลดการตั้งค่าจาก config มาแสดงใน GUI"""
+        # Auto Mode Settings
+        self.auto_mode_var.set(config.grid.auto_mode)
+        if hasattr(self, 'risk_profile_var'):
+            self.risk_profile_var.set(config.grid.risk_profile)
+        
         # Grid Settings
         self.direction_var.set(config.grid.direction)
         self.buy_grid_distance_var.set(config.grid.buy_grid_distance)
@@ -724,6 +1057,9 @@ class TradingGUI:
         self.sell_hg_initial_lot_var.set(config.hg.sell_hg_initial_lot)
         self.sell_sl_buffer_var.set(config.hg.sell_sl_buffer)
         self.sell_max_hg_levels_var.set(config.hg.sell_max_hg_levels)
+        
+        # Toggle mode UI
+        self.toggle_mode()
         
     
     def refresh_accounts(self):
@@ -974,6 +1310,14 @@ class TradingGUI:
                 # ย้าย messagebox ไปใช้ root.after() เพื่อป้องกัน hang ใน background thread
                 self.root.after(0, lambda err=str(e): messagebox.showerror("Error", f"Trading stopped: {err}"))
                 break
+
+            # 🆕 Auto Mode: อัพเดท UI เฉพาะทุก 60 วินาที (ไม่ใช่ทุกรอบ)
+            if config.grid.auto_mode:
+                self.auto_refresh_counter += 1
+                if self.auto_refresh_counter >= self.auto_refresh_interval:
+                    self.auto_refresh_counter = 0
+                    # เรียกแบบ non-blocking
+                    self.root.after(0, lambda: self.refresh_auto_analysis_light())
 
             # Main Monitoring Section
             try:
