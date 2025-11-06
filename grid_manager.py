@@ -8,8 +8,10 @@ from mt5_connection import mt5_connection
 from position_monitor import position_monitor
 from config import config
 
-logging.basicConfig(level=logging.INFO)
+# ตั้ง log level เป็น WARNING เพื่อลด log ที่ไม่สำคัญ
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # GridManager ใช้ INFO แต่ module อื่นใช้ WARNING
 
 
 class GridManager:
@@ -23,6 +25,10 @@ class GridManager:
         self.last_order_time = {}  # เก็บเวลาล่าสุดที่วางไม้แต่ละประเภท
         self.placing_order_lock = False  # Lock เพื่อป้องกันการวางไม้พร้อมกัน
         self.order_counter = 0  # นับจำนวนไม้ที่วางไปแล้วทั้งหมด (ไม่ซ้ำแน่นอน)
+        
+        # 🆕 Log throttling (ลด log ซ้ำๆ)
+        self.last_log_time = {}  # เก็บเวลา log ล่าสุดของแต่ละประเภท
+        self.log_throttle_duration = 10  # วินาที (log ซ้ำได้ทุก 10 วินาที)
     
     def place_initial_orders(self, current_price: float):
         """
@@ -117,7 +123,7 @@ class GridManager:
             
             if pos is None:
                 # Position ถูกปิดแล้ว (ถึง TP)
-                logger.info(f"Grid closed: {grid['level_key']} at {grid['price']:.2f}")
+                logger.debug(f"Grid closed: {grid['level_key']} at {grid['price']:.2f}")
                 
                 # ลบออกจาก list
                 self.grid_levels.remove(grid)
@@ -206,19 +212,19 @@ class GridManager:
             # ตรวจสอบจาก MT5 positions
             for pos in grid_positions:
                 if pos['ticket'] not in self.placed_orders.values():
-                    logger.warning(f"Recent order found in MT5: {pos['ticket']} - preventing duplicate")
+                    logger.debug(f"Recent order found in MT5: {pos['ticket']} - preventing duplicate")
                     return True
             
             # ตรวจสอบจาก placed_orders
             for level_key, ticket in self.placed_orders.items():
                 if ticket not in [p['ticket'] for p in grid_positions]:
-                    logger.warning(f"Recent order found in placed_orders: {ticket} - preventing duplicate")
+                    logger.debug(f"Recent order found in placed_orders: {ticket} - preventing duplicate")
                     return True
             
             # ตรวจสอบจาก grid_levels
             for grid in self.grid_levels:
                 if grid['ticket'] not in [p['ticket'] for p in grid_positions]:
-                    logger.warning(f"Recent order found in grid_levels: {grid['ticket']} - preventing duplicate")
+                    logger.debug(f"Recent order found in grid_levels: {grid['ticket']} - preventing duplicate")
                     return True
             
             return False
@@ -257,17 +263,17 @@ class GridManager:
         """
         # ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
         if self.check_recent_orders():
-            logger.warning("Recent orders found - preventing duplicate")
+            logger.debug("Recent orders found - preventing duplicate")
             return None
         
         # ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
         if self.check_pending_orders():
-            logger.warning("Pending orders found - waiting for completion")
+            logger.debug("Pending orders found - waiting for completion")
             return None
         
         # ป้องกันการวางพร้อมกัน (Lock)
         if self.placing_order_lock:
-            logger.warning("⚠️ Order placement locked - preventing duplicate order")
+            logger.debug("⚠️ Order placement locked - preventing duplicate order")
             return
         
         try:
@@ -284,7 +290,7 @@ class GridManager:
                 if pos['type'] == 'buy':
                     distance = abs(pos['open_price'] - current_price)
                     if distance < min_distance:
-                        logger.warning(f"⚠️ DUPLICATE PREVENTED: BUY order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
+                        logger.debug(f"⚠️ DUPLICATE PREVENTED: BUY order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
                         return
             
             tp_distance = config.pips_to_price(config.grid.buy_take_profit)
@@ -326,7 +332,7 @@ class GridManager:
                 logger.info(f"✓ New BUY placed: {config.grid.buy_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
             else:
                 # ล้มเหลว ไม่ retry เพื่อป้องกัน hang (จะลองใหม่ในรอบถัดไป)
-                logger.warning(f"Order placement failed - will retry in next cycle")
+                logger.debug(f"Order placement failed - will retry in next cycle")
         finally:
             self.placing_order_lock = False
     
@@ -336,17 +342,17 @@ class GridManager:
         """
         # ตรวจสอบว่ามี Order ใหม่เกิดขึ้นในระบบหรือไม่
         if self.check_recent_orders():
-            logger.warning("Recent orders found - preventing duplicate")
+            logger.debug("Recent orders found - preventing duplicate")
             return None
         
         # ตรวจสอบว่า Order ที่ส่งไปสำเร็จจริงหรือไม่
         if self.check_pending_orders():
-            logger.warning("Pending orders found - waiting for completion")
+            logger.debug("Pending orders found - waiting for completion")
             return None
         
         # ป้องกันการวางพร้อมกัน (Lock)
         if self.placing_order_lock:
-            logger.warning("⚠️ Order placement locked - preventing duplicate order")
+            logger.debug("⚠️ Order placement locked - preventing duplicate order")
             return
         
         try:
@@ -363,7 +369,7 @@ class GridManager:
                 if pos['type'] == 'sell':
                     distance = abs(pos['open_price'] - current_price)
                     if distance < min_distance:
-                        logger.warning(f"⚠️ DUPLICATE PREVENTED: SELL order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
+                        logger.debug(f"⚠️ DUPLICATE PREVENTED: SELL order too close ({distance:.2f} < {min_distance:.2f}) to existing position at {pos['open_price']:.2f}")
                         return
             
             tp_distance = config.pips_to_price(config.grid.sell_take_profit)
@@ -405,7 +411,7 @@ class GridManager:
                 logger.info(f"✓ New SELL placed: {config.grid.sell_lot_size} lots at {current_price:.2f} | TP: {tp_price:.2f} | Ticket: {ticket} | ID: {level_key}")
             else:
                 # ล้มเหลว ไม่ retry เพื่อป้องกัน hang (จะลองใหม่ในรอบถัดไป)
-                logger.warning(f"Order placement failed - will retry in next cycle")
+                logger.debug(f"Order placement failed - will retry in next cycle")
         finally:
             self.placing_order_lock = False
     
@@ -478,6 +484,30 @@ class GridManager:
         except Exception as e:
             logger.error(f"Error updating auto settings: {e}")
     
+    def _should_log(self, log_key: str) -> bool:
+        """
+        เช็คว่าควร log หรือไม่ (throttling)
+        
+        Args:
+            log_key: key สำหรับแยกประเภท log
+            
+        Returns:
+            True ถ้าควร log
+        """
+        import time
+        current_time = time.time()
+        
+        if log_key not in self.last_log_time:
+            self.last_log_time[log_key] = current_time
+            return True
+        
+        time_since_last = current_time - self.last_log_time[log_key]
+        if time_since_last >= self.log_throttle_duration:
+            self.last_log_time[log_key] = current_time
+            return True
+        
+        return False
+    
     def check_and_restart_if_no_positions(self):
         """
         ตรวจสอบว่ามีไม้ Grid เหลืออยู่ในพอร์ตไหม
@@ -494,9 +524,11 @@ class GridManager:
         
         # ถ้าไม่มีไม้เลย และ grid_levels ว่างเปล่า
         if len(grid_positions) == 0 and len(self.grid_levels) == 0:
-            logger.info("=" * 60)
-            logger.info("⚠️ No Grid positions found - Auto Restarting...")
-            logger.info("=" * 60)
+            # Log เฉพาะครั้งแรก (throttle)
+            if self._should_log("no_positions"):
+                logger.info("=" * 60)
+                logger.info("⚠️ No Grid positions found - Auto Restarting...")
+                logger.info("=" * 60)
             
             # ดึงราคาปัจจุบัน
             price_info = mt5_connection.get_current_price()
@@ -560,12 +592,12 @@ class GridManager:
             # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Buy เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
             if config.grid.direction == 'both' and not has_buy_position:
                 should_place_buy = True
-                logger.info(f"🔄 [BOTH Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
+                logger.debug(f"🔄 [BOTH Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
             
             # เงื่อนไขปกติ: ราคาลงห่างจาก latest_sell >= Sell Grid Distance
             elif latest_sell_price and current_price <= (latest_sell_price - sell_grid_distance_price):
                 should_place_buy = True
-                logger.info(f"Grid Distance triggered (ราคาลง): New BUY at {current_price:.2f}")
+                logger.debug(f"Grid Distance triggered (ราคาลง): New BUY at {current_price:.2f}")
             
             # วางไม้ Buy ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
             if should_place_buy:
@@ -581,7 +613,7 @@ class GridManager:
                 if not has_nearby_buy:
                     self.place_new_buy_order(current_price)
                 else:
-                    logger.info(f"⚠ Skipped BUY - nearby order exists at {current_price:.2f}")
+                    logger.debug(f"⚠ Skipped BUY - nearby order exists at {current_price:.2f}")
         
         # ตรวจสอบเงื่อนไขการวางไม้ Sell (ใช้ระยะห่าง Sell)
         if config.grid.direction in ['sell', 'both']:
@@ -590,12 +622,12 @@ class GridManager:
             # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Sell เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
             if config.grid.direction == 'both' and not has_sell_position:
                 should_place_sell = True
-                logger.info(f"🔄 [BOTH Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
+                logger.debug(f"🔄 [BOTH Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
             
             # เงื่อนไขปกติ: ราคาขึ้นห่างจาก latest_buy >= Buy Grid Distance
             elif latest_buy_price and current_price >= (latest_buy_price + buy_grid_distance_price):
                 should_place_sell = True
-                logger.info(f"Grid Distance triggered (ราคาขึ้น): New SELL at {current_price:.2f}")
+                logger.debug(f"Grid Distance triggered (ราคาขึ้น): New SELL at {current_price:.2f}")
             
             # วางไม้ Sell ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
             if should_place_sell:
@@ -611,7 +643,7 @@ class GridManager:
                 if not has_nearby_sell:
                     self.place_new_sell_order(current_price)
                 else:
-                    logger.info(f"⚠ Skipped SELL - nearby order exists at {current_price:.2f}")
+                    logger.debug(f"⚠ Skipped SELL - nearby order exists at {current_price:.2f}")
         
         # Recovery ไม้ที่ผิดทาง
         self.recovery_wrong_direction_orders(current_price)
@@ -675,9 +707,9 @@ class GridManager:
                     if not has_nearby_buy:
                         self.place_new_buy_order(current_price)
                         mode_tag = "AUTO" if config.grid.auto_mode else "BOTH"
-                        logger.info(f"✓ [{mode_tag}] Recovery BUY: Latest buy {latest_buy['ticket']} at {latest_buy['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add BUY")
+                        logger.info(f"✓ [{mode_tag}] Recovery BUY: {distance_from_latest:.0f} pips → Add BUY at {current_price:.2f}")
                     else:
-                        logger.info(f"⚠ Skipped Recovery BUY - nearby order exists at {current_price:.2f}")
+                        logger.debug(f"⚠ Skipped Recovery BUY - nearby order exists at {current_price:.2f}")
         
         # แก้ไม้ Sell (โหมด both หรือ Auto Mode direction = "sell")
         if config.grid.direction in ['sell', 'both']:
@@ -705,9 +737,9 @@ class GridManager:
                     if not has_nearby_sell:
                         self.place_new_sell_order(current_price)
                         mode_tag = "AUTO" if config.grid.auto_mode else "BOTH"
-                        logger.info(f"✓ [{mode_tag}] Recovery SELL: Latest sell {latest_sell['ticket']} at {latest_sell['open_price']:.2f}, current {current_price:.2f} ({distance_from_latest:.0f} pips) → Add SELL")
+                        logger.info(f"✓ [{mode_tag}] Recovery SELL: {distance_from_latest:.0f} pips → Add SELL at {current_price:.2f}")
                     else:
-                        logger.info(f"⚠ Skipped Recovery SELL - nearby order exists at {current_price:.2f}")
+                        logger.debug(f"⚠ Skipped Recovery SELL - nearby order exists at {current_price:.2f}")
     
     def restore_existing_positions(self):
         """

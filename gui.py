@@ -379,8 +379,8 @@ class TradingGUI:
         ttk.Label(left_col, text="📈 MARKET ANALYSIS", 
                  font=("Arial", 9, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
         
-        # Trend
-        ttk.Label(left_col, text="Trend:", font=("Arial", 8)).grid(row=1, column=0, sticky=tk.W, pady=1)
+        # Direction
+        ttk.Label(left_col, text="Direction:", font=("Arial", 8)).grid(row=1, column=0, sticky=tk.W, pady=1)
         self.auto_trend_var = tk.StringVar(value="-")
         self.auto_trend_label = ttk.Label(left_col, textvariable=self.auto_trend_var,
                                           font=("Arial", 8, "bold"), foreground="blue")
@@ -391,70 +391,82 @@ class TradingGUI:
         self.auto_atr_var = tk.StringVar(value="-")
         ttk.Label(left_col, textvariable=self.auto_atr_var, font=("Arial", 8)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=1)
         
-        # EMA(20)
-        ttk.Label(left_col, text="EMA(20):", font=("Arial", 8)).grid(row=3, column=0, sticky=tk.W, pady=1)
-        self.auto_ema_fast_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_ema_fast_var, font=("Arial", 8)).grid(row=3, column=1, sticky=tk.W, padx=5, pady=1)
+        # Last Candle
+        ttk.Label(left_col, text="Candle:", font=("Arial", 8)).grid(row=3, column=0, sticky=tk.W, pady=1)
+        self.auto_candle_var = tk.StringVar(value="-")
+        self.auto_candle_label = ttk.Label(left_col, textvariable=self.auto_candle_var, font=("Arial", 8, "bold"))
+        self.auto_candle_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=1)
         
-        # EMA(50)
-        ttk.Label(left_col, text="EMA(50):", font=("Arial", 8)).grid(row=4, column=0, sticky=tk.W, pady=1)
-        self.auto_ema_slow_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_ema_slow_var, font=("Arial", 8)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=1)
+        # Volume Level
+        ttk.Label(left_col, text="Volume:", font=("Arial", 8)).grid(row=4, column=0, sticky=tk.W, pady=1)
+        self.auto_volume_var = tk.StringVar(value="-")
+        self.auto_volume_label = ttk.Label(left_col, textvariable=self.auto_volume_var, font=("Arial", 8, "bold"))
+        self.auto_volume_label.grid(row=4, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Candle Size
+        ttk.Label(left_col, text="Size:", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=1)
+        self.auto_candle_pips_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_candle_pips_var, font=("Arial", 8)).grid(row=5, column=1, sticky=tk.W, padx=5, pady=1)
+        
+        # Volume Ratio
+        ttk.Label(left_col, text="Vol Ratio:", font=("Arial", 8)).grid(row=6, column=0, sticky=tk.W, pady=1)
+        self.auto_volume_ratio_var = tk.StringVar(value="-")
+        ttk.Label(left_col, textvariable=self.auto_volume_ratio_var, font=("Arial", 8)).grid(row=6, column=1, sticky=tk.W, padx=5, pady=1)
         
         # Last Update
-        ttk.Label(left_col, text="Updated:", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=1)
+        ttk.Label(left_col, text="Updated:", font=("Arial", 8)).grid(row=7, column=0, sticky=tk.W, pady=1)
         self.auto_update_time_var = tk.StringVar(value="-")
         ttk.Label(left_col, textvariable=self.auto_update_time_var,
-                 foreground="gray", font=("Arial", 7)).grid(row=5, column=1, sticky=tk.W, padx=5, pady=1)
+                 foreground="gray", font=("Arial", 7)).grid(row=7, column=1, sticky=tk.W, padx=5, pady=1)
         
         # Separator
-        ttk.Separator(left_col, orient='horizontal').grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        ttk.Separator(left_col, orient='horizontal').grid(row=8, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
         
         # Auto Calculated Settings (กระชับขึ้น)
         ttk.Label(left_col, text="⚙️ AUTO SETTINGS", 
-                 font=("Arial", 9, "bold")).grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+                 font=("Arial", 9, "bold")).grid(row=9, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
         
         # Grid Distance
-        ttk.Label(left_col, text="Grid:", font=("Arial", 8)).grid(row=8, column=0, sticky=tk.W, pady=1)
+        ttk.Label(left_col, text="Grid:", font=("Arial", 8)).grid(row=10, column=0, sticky=tk.W, pady=1)
         self.auto_grid_dist_var = tk.StringVar(value="-")
         ttk.Label(left_col, textvariable=self.auto_grid_dist_var,
-                 font=("Arial", 8, "bold"), foreground="green").grid(row=8, column=1, sticky=tk.W, padx=5, pady=1)
+                 font=("Arial", 8, "bold"), foreground="green").grid(row=10, column=1, sticky=tk.W, padx=5, pady=1)
         
         # HG Distance
-        ttk.Label(left_col, text="HG:", font=("Arial", 8)).grid(row=9, column=0, sticky=tk.W, pady=1)
+        ttk.Label(left_col, text="HG:", font=("Arial", 8)).grid(row=11, column=0, sticky=tk.W, pady=1)
         self.auto_hg_dist_var = tk.StringVar(value="-")
         ttk.Label(left_col, textvariable=self.auto_hg_dist_var,
-                 font=("Arial", 8, "bold"), foreground="orange").grid(row=9, column=1, sticky=tk.W, padx=5, pady=1)
+                 font=("Arial", 8, "bold"), foreground="orange").grid(row=11, column=1, sticky=tk.W, padx=5, pady=1)
         
-        # Direction
-        ttk.Label(left_col, text="Direction:", font=("Arial", 8)).grid(row=10, column=0, sticky=tk.W, pady=1)
+        # Active Direction (ย้ายขึ้นมาใกล้ Market Analysis)
+        ttk.Label(left_col, text="Active:", font=("Arial", 8)).grid(row=12, column=0, sticky=tk.W, pady=1)
         self.auto_direction_var = tk.StringVar(value="-")
         ttk.Label(left_col, textvariable=self.auto_direction_var,
-                 font=("Arial", 8, "bold"), foreground="blue").grid(row=10, column=1, sticky=tk.W, padx=5, pady=1)
+                 font=("Arial", 8, "bold"), foreground="blue").grid(row=12, column=1, sticky=tk.W, padx=5, pady=1)
         
         # Separator
-        ttk.Separator(left_col, orient='horizontal').grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        ttk.Separator(left_col, orient='horizontal').grid(row=13, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
         
         # Risk Profile Selection (กระชับขึ้น)
         ttk.Label(left_col, text="🛡️ RISK PROFILE", 
-                 font=("Arial", 9, "bold")).grid(row=12, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+                 font=("Arial", 9, "bold")).grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
         
         self.risk_profile_var = tk.StringVar(value="moderate")
         
         ttk.Radiobutton(left_col, text="Very Conservative", 
-                       variable=self.risk_profile_var, value="very_conservative").grid(row=13, column=0, columnspan=2, sticky=tk.W, pady=1)
+                       variable=self.risk_profile_var, value="very_conservative").grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=1)
         ttk.Radiobutton(left_col, text="Conservative", 
-                       variable=self.risk_profile_var, value="conservative").grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=1)
+                       variable=self.risk_profile_var, value="conservative").grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=1)
         ttk.Radiobutton(left_col, text="Moderate ⭐", 
-                       variable=self.risk_profile_var, value="moderate").grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=1)
+                       variable=self.risk_profile_var, value="moderate").grid(row=17, column=0, columnspan=2, sticky=tk.W, pady=1)
         ttk.Radiobutton(left_col, text="Aggressive", 
-                       variable=self.risk_profile_var, value="aggressive").grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=1)
+                       variable=self.risk_profile_var, value="aggressive").grid(row=18, column=0, columnspan=2, sticky=tk.W, pady=1)
         ttk.Radiobutton(left_col, text="Very Aggressive", 
-                       variable=self.risk_profile_var, value="very_aggressive").grid(row=17, column=0, columnspan=2, sticky=tk.W, pady=1)
+                       variable=self.risk_profile_var, value="very_aggressive").grid(row=19, column=0, columnspan=2, sticky=tk.W, pady=1)
         
         # Refresh Button
         ttk.Button(left_col, text="🔄 Refresh Analysis", 
-                  command=self.refresh_auto_analysis).grid(row=18, column=0, columnspan=2, pady=(8, 0), sticky=(tk.W, tk.E))
+                  command=self.refresh_auto_analysis).grid(row=20, column=0, columnspan=2, pady=(8, 0), sticky=(tk.W, tk.E))
         
         # ===== RIGHT COLUMN =====
         
@@ -491,7 +503,7 @@ class TradingGUI:
         """อัพเดทข้อมูลใน Auto Mode (Full - รวม Survivability)"""
         try:
             from auto_config_manager import auto_config_manager
-            from trend_detector import trend_detector
+            from candle_volume_detector import candle_volume_detector
             from atr_calculator import atr_calculator
             
             # ตรวจสอบการเชื่อมต่อ MT5
@@ -502,22 +514,57 @@ class TradingGUI:
             
             # ดึงข้อมูลตลาด
             atr_info = atr_calculator.get_atr_info()
-            trend_info = trend_detector.get_trend_info()
+            direction_info = candle_volume_detector.get_full_analysis()
             
             # แสดง Market Analysis
             self.auto_atr_var.set(f"{atr_info['atr']:.1f} pips")
-            self.auto_ema_fast_var.set(f"{trend_info['ema_fast']:.2f}")
-            self.auto_ema_slow_var.set(f"{trend_info['ema_slow']:.2f}")
             
-            trend_text = f"{trend_info['trend'].upper()} ({trend_info['strength']})"
-            self.auto_trend_var.set(trend_text)
-            
-            # เปลี่ยนสี Trend
-            if trend_info['trend'] == 'buy':
-                self.auto_trend_label.configure(foreground="green")
-            elif trend_info['trend'] == 'sell':
-                self.auto_trend_label.configure(foreground="red")
+            if direction_info:
+                # แสดง Candle Info
+                candle_text = f"{direction_info['candle_type']} ({direction_info['candle_strength']})"
+                self.auto_candle_var.set(candle_text)
+                
+                # เปลี่ยนสี Candle
+                if direction_info['candle_type'] == 'BULLISH':
+                    self.auto_candle_label.configure(foreground="green")
+                elif direction_info['candle_type'] == 'BEARISH':
+                    self.auto_candle_label.configure(foreground="red")
+                else:
+                    self.auto_candle_label.configure(foreground="gray")
+                
+                # แสดง Volume Info
+                vol_text = f"{direction_info['volume_level']} ({direction_info['volume_ratio']:.2f}x)"
+                self.auto_volume_var.set(vol_text)
+                
+                # เปลี่ยนสี Volume
+                if direction_info['volume_level'] in ['VERY HIGH', 'HIGH']:
+                    self.auto_volume_label.configure(foreground="orange")
+                elif direction_info['volume_level'] == 'MODERATE':
+                    self.auto_volume_label.configure(foreground="blue")
+                else:
+                    self.auto_volume_label.configure(foreground="gray")
+                
+                # แสดง Candle Size และ Volume Ratio
+                self.auto_candle_pips_var.set(f"{direction_info['candle_pips']:.1f} pips")
+                self.auto_volume_ratio_var.set(f"{direction_info['volume_ratio']:.2f}x")
+                
+                # แสดง Direction
+                dir_text = f"{direction_info['direction'].upper()} ({direction_info['confidence']})"
+                self.auto_trend_var.set(dir_text)
+                
+                # เปลี่ยนสี Direction
+                if direction_info['direction'] == 'buy':
+                    self.auto_trend_label.configure(foreground="green")
+                elif direction_info['direction'] == 'sell':
+                    self.auto_trend_label.configure(foreground="red")
+                else:
+                    self.auto_trend_label.configure(foreground="blue")
             else:
+                self.auto_candle_var.set("-")
+                self.auto_volume_var.set("-")
+                self.auto_candle_pips_var.set("-")
+                self.auto_volume_ratio_var.set("-")
+                self.auto_trend_var.set("BOTH (LOW)")
                 self.auto_trend_label.configure(foreground="blue")
             
             # แสดงเวลาอัพเดท
@@ -562,7 +609,7 @@ class TradingGUI:
         """อัพเดทข้อมูลใน Auto Mode แบบเบา (ไม่คำนวณ Survivability)"""
         try:
             from auto_config_manager import auto_config_manager
-            from trend_detector import trend_detector
+            from candle_volume_detector import candle_volume_detector
             from atr_calculator import atr_calculator
             
             # ตรวจสอบการเชื่อมต่อ MT5
@@ -572,23 +619,51 @@ class TradingGUI:
             
             # ดึงข้อมูลตลาด (ใช้ cache ถ้ามี)
             atr_info = atr_calculator.get_atr_info()
-            trend_info = trend_detector.get_trend_info()
+            direction_info = candle_volume_detector.get_full_analysis()
             
             # แสดง Market Analysis
             self.auto_atr_var.set(f"{atr_info['atr']:.1f} pips")
-            self.auto_ema_fast_var.set(f"{trend_info['ema_fast']:.2f}")
-            self.auto_ema_slow_var.set(f"{trend_info['ema_slow']:.2f}")
             
-            trend_text = f"{trend_info['trend'].upper()} ({trend_info['strength']})"
-            self.auto_trend_var.set(trend_text)
-            
-            # เปลี่ยนสี Trend
-            if trend_info['trend'] == 'buy':
-                self.auto_trend_label.configure(foreground="green")
-            elif trend_info['trend'] == 'sell':
-                self.auto_trend_label.configure(foreground="red")
-            else:
-                self.auto_trend_label.configure(foreground="blue")
+            if direction_info:
+                # แสดง Candle Info
+                candle_text = f"{direction_info['candle_type']} ({direction_info['candle_strength']})"
+                self.auto_candle_var.set(candle_text)
+                
+                # เปลี่ยนสี Candle
+                if direction_info['candle_type'] == 'BULLISH':
+                    self.auto_candle_label.configure(foreground="green")
+                elif direction_info['candle_type'] == 'BEARISH':
+                    self.auto_candle_label.configure(foreground="red")
+                else:
+                    self.auto_candle_label.configure(foreground="gray")
+                
+                # แสดง Volume Info
+                vol_text = f"{direction_info['volume_level']} ({direction_info['volume_ratio']:.2f}x)"
+                self.auto_volume_var.set(vol_text)
+                
+                # เปลี่ยนสี Volume
+                if direction_info['volume_level'] in ['VERY HIGH', 'HIGH']:
+                    self.auto_volume_label.configure(foreground="orange")
+                elif direction_info['volume_level'] == 'MODERATE':
+                    self.auto_volume_label.configure(foreground="blue")
+                else:
+                    self.auto_volume_label.configure(foreground="gray")
+                
+                # แสดง Candle Size และ Volume Ratio
+                self.auto_candle_pips_var.set(f"{direction_info['candle_pips']:.1f} pips")
+                self.auto_volume_ratio_var.set(f"{direction_info['volume_ratio']:.2f}x")
+                
+                # แสดง Direction
+                dir_text = f"{direction_info['direction'].upper()} ({direction_info['confidence']})"
+                self.auto_trend_var.set(dir_text)
+                
+                # เปลี่ยนสี Direction
+                if direction_info['direction'] == 'buy':
+                    self.auto_trend_label.configure(foreground="green")
+                elif direction_info['direction'] == 'sell':
+                    self.auto_trend_label.configure(foreground="red")
+                else:
+                    self.auto_trend_label.configure(foreground="blue")
             
             # แสดงเวลาอัพเดท
             from datetime import timedelta

@@ -7,8 +7,9 @@ import logging
 from datetime import datetime, timedelta
 from config import config
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)  # ATR Calculator ใช้ WARNING เพื่อลด log
 
 
 class ATRCalculator:

@@ -6,8 +6,9 @@ import logging
 from datetime import datetime
 from config import config
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)  # Auto Config Manager ใช้ WARNING เพื่อลด log
 
 
 # Risk Profiles (5 แบบ)
@@ -73,11 +74,11 @@ class AutoConfigManager:
         
         Auto Calculation Formula:
         1. ดึง ATR จาก atr_calculator
-        2. ดึง Trend จาก trend_detector
+        2. ดึง Direction จาก candle_volume_detector (Candle + Volume)
         3. คำนวณ Grid Distance = ATR * grid_atr_multiplier
         4. คำนวณ HG Distance = Grid Distance * hg_grid_multiplier
         5. คำนวณ HG SL Trigger = HG Distance * hg_sl_ratio
-        6. ตั้ง Direction ตาม Trend
+        6. ตั้ง Direction ตาม Candle + Volume Analysis
         
         Args:
             risk_profile: ชื่อ risk profile (very_conservative, conservative, moderate, aggressive, very_aggressive)
@@ -87,11 +88,18 @@ class AutoConfigManager:
         """
         try:
             from atr_calculator import atr_calculator
-            from trend_detector import trend_detector
+            from candle_volume_detector import candle_volume_detector
             
-            # ดึงข้อมูล ATR และ Trend
+            # ดึงข้อมูล ATR และ Direction Analysis
             atr = atr_calculator.calculate_atr()
-            trend = trend_detector.detect_trend()
+            direction_info = candle_volume_detector.get_full_analysis()
+            
+            if direction_info:
+                direction = direction_info['direction']
+                confidence = direction_info['confidence']
+            else:
+                direction = "both"
+                confidence = "LOW"
             
             if atr is None:
                 logger.error("Cannot calculate ATR, using default values")
@@ -111,13 +119,11 @@ class AutoConfigManager:
             # คำนวณ HG SL Trigger
             hg_sl_trigger = round(hg_distance * multipliers["hg_sl_ratio"], 0)
             
-            # ตั้ง Direction ตาม Trend
-            direction = trend
-            
             # สร้าง settings dictionary
             settings = {
                 # Direction
                 "direction": direction,
+                "confidence": confidence,
                 
                 # Grid Settings (ใช้ค่าเดียวกันสำหรับ Buy/Sell)
                 "buy_grid_distance": int(grid_distance),
@@ -131,7 +137,6 @@ class AutoConfigManager:
                 
                 # ข้อมูลเพิ่มเติม
                 "atr": atr,
-                "trend": trend,
                 "risk_profile": risk_profile,
                 "timestamp": datetime.now()
             }
@@ -139,11 +144,10 @@ class AutoConfigManager:
             logger.info(f"Auto settings calculated:")
             logger.info(f"  Risk Profile: {risk_profile}")
             logger.info(f"  ATR: {atr:.1f} pips")
-            logger.info(f"  Trend: {trend}")
+            logger.info(f"  Direction: {direction} ({confidence})")
             logger.info(f"  Grid Distance: {grid_distance} pips")
             logger.info(f"  HG Distance: {hg_distance} pips")
             logger.info(f"  HG SL Trigger: {hg_sl_trigger} pips")
-            logger.info(f"  Direction: {direction}")
             
             return settings
             
@@ -152,6 +156,7 @@ class AutoConfigManager:
             # Return default safe settings
             return {
                 "direction": "both",
+                "confidence": "LOW",
                 "buy_grid_distance": 50,
                 "sell_grid_distance": 50,
                 "buy_hg_distance": 200,
@@ -159,7 +164,6 @@ class AutoConfigManager:
                 "buy_hg_sl_trigger": 100,
                 "sell_hg_sl_trigger": 100,
                 "atr": 0.0,
-                "trend": "both",
                 "risk_profile": risk_profile,
                 "timestamp": datetime.now()
             }
