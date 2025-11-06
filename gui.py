@@ -25,7 +25,9 @@ class TradingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Grid Trading System with HG - XAUUSD")
-        self.root.geometry("1000x800")
+        self.root.geometry("1200x700")  # 🆕 ปรับขนาดให้พอดีและสมดุล
+        self.root.minsize(1000, 600)  # 🆕 กำหนดขนาดขั้นต่ำ
+        self.root.maxsize(1400, 900)  # 🆕 กำหนดขนาดสูงสุด (ป้องกันเกินหน้าจอ)
         
         self.api_base_url ="http://123.253.62.50:8080/api"
 
@@ -75,13 +77,13 @@ class TradingGUI:
     def create_trading_tab(self):
         """สร้าง content สำหรับ Trading Tab"""
         
-        # ============ Frame หลัก ============
-        main_frame = ttk.Frame(self.trading_tab, padding="10")
+        # ============ Frame หลัก (ลด padding) ============
+        main_frame = ttk.Frame(self.trading_tab, padding="8")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # ============ Mode Selection ============
-        mode_frame = ttk.LabelFrame(main_frame, text="🎮 Trading Mode", padding="10")
-        mode_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        # ============ Mode Selection (ลด padding) ============
+        mode_frame = ttk.LabelFrame(main_frame, text="🎮 Trading Mode", padding="8")
+        mode_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
         
         self.auto_mode_var = tk.BooleanVar(value=False)
         ttk.Radiobutton(mode_frame, text="📝 Manual Mode", 
@@ -91,9 +93,9 @@ class TradingGUI:
                        variable=self.auto_mode_var, value=True,
                        command=self.toggle_mode).pack(side=tk.LEFT, padx=10)
         
-        # ============ Connection Status ============
-        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="10")
-        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        # ============ Connection Status (ลด padding) ============
+        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="8")
+        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
         
         # Row 0: Account Selection
         ttk.Label(status_frame, text="Select Account:").grid(row=0, column=0, sticky=tk.W)
@@ -159,9 +161,9 @@ class TradingGUI:
         self.expiry_date_label.grid(row=3, column=7, sticky=tk.W, padx=5, pady=(2, 0))
         self.expiry_date_var.trace_add("write", format_expiry_date)
 
-        # ============ Auto Mode Display (ซ่อนตอนเริ่มต้น) ============
-        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="10")
-        self.auto_display_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        # ============ Auto Mode Display (ซ่อนตอนเริ่มต้น - ลด padding) ============
+        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="8")
+        self.auto_display_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
         self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
         
         self.create_auto_mode_ui()
@@ -485,92 +487,92 @@ class TradingGUI:
         ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", 
                  font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
-        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=18, width=55,
+        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=12, width=50,
                                                             wrap=tk.WORD, font=("Consolas", 8))
-        self.survivability_text.pack(fill=tk.BOTH, expand=True)
+        self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Tab 2: Trading Statistics
         stats_tab = ttk.Frame(right_notebook)
         right_notebook.add(stats_tab, text="📈 Statistics")
         
-        # Statistics Section
-        stats_frame = ttk.LabelFrame(stats_tab, text="📊 Trading Statistics", padding="10")
-        stats_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Statistics Section (ลด padding)
+        stats_frame = ttk.LabelFrame(stats_tab, text="📊 Trading Statistics", padding="8")
+        stats_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=3)
         
         # สร้าง grid สำหรับแสดงสถิติ
         stats_grid = ttk.Frame(stats_frame)
         stats_grid.pack(fill=tk.BOTH, expand=True)
         
-        # Row 1: Total Orders
-        ttk.Label(stats_grid, text="Total Orders:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        # Row 1: Total Orders (ลด padding)
+        ttk.Label(stats_grid, text="Total Orders:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=3)
         self.total_orders_var = tk.StringVar(value="0")
         ttk.Label(stats_grid, textvariable=self.total_orders_var, 
-                 font=("Arial", 9, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+                 font=("Arial", 9, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5, pady=3)
         
         # Row 2: Active Positions
-        ttk.Label(stats_grid, text="Active Positions:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(stats_grid, text="Active Positions:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, padx=5, pady=3)
         self.active_positions_var = tk.StringVar(value="0")
         ttk.Label(stats_grid, textvariable=self.active_positions_var, 
-                 font=("Arial", 9, "bold"), foreground="green").grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+                 font=("Arial", 9, "bold"), foreground="green").grid(row=1, column=1, sticky=tk.W, padx=5, pady=3)
         
         # Row 3: Total P&L
-        ttk.Label(stats_grid, text="Total P&L:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(stats_grid, text="Total P&L:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, padx=5, pady=3)
         self.stats_pnl_var = tk.StringVar(value="$0.00")
         self.stats_pnl_label = ttk.Label(stats_grid, textvariable=self.stats_pnl_var, 
                                         font=("Arial", 10, "bold"), foreground="black")
-        self.stats_pnl_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        self.stats_pnl_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=3)
         
         # Row 4: Win Rate
-        ttk.Label(stats_grid, text="Win Rate:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(stats_grid, text="Win Rate:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, padx=5, pady=3)
         self.win_rate_var = tk.StringVar(value="0.0%")
         ttk.Label(stats_grid, textvariable=self.win_rate_var, 
-                 font=("Arial", 9, "bold"), foreground="green").grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+                 font=("Arial", 9, "bold"), foreground="green").grid(row=3, column=1, sticky=tk.W, padx=5, pady=3)
         
         # Row 5: Average Profit
-        ttk.Label(stats_grid, text="Avg Profit:", font=("Arial", 9)).grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(stats_grid, text="Avg Profit:", font=("Arial", 9)).grid(row=4, column=0, sticky=tk.W, padx=5, pady=3)
         self.avg_profit_var = tk.StringVar(value="$0.00")
         ttk.Label(stats_grid, textvariable=self.avg_profit_var, 
-                 font=("Arial", 9)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=5)
+                 font=("Arial", 9)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Separator
-        ttk.Separator(stats_grid, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        # Separator (ลด padding)
+        ttk.Separator(stats_grid, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
-        # Real-time Status Section
-        status_frame = ttk.LabelFrame(stats_tab, text="⚡ Real-time Status", padding="10")
-        status_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Real-time Status Section (ลด padding)
+        status_frame = ttk.LabelFrame(stats_tab, text="⚡ Real-time Status", padding="8")
+        status_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=3)
         
-        # Grid Status
-        ttk.Label(status_frame, text="Grid Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=3)
+        # Grid Status (ลด padding)
+        ttk.Label(status_frame, text="Grid Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=2)
         self.realtime_grid_var = tk.StringVar(value="Inactive")
         ttk.Label(status_frame, textvariable=self.realtime_grid_var, 
-                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=3)
+                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
         
         # HG Status
-        ttk.Label(status_frame, text="HG Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=3)
+        ttk.Label(status_frame, text="HG Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=2)
         self.realtime_hg_var = tk.StringVar(value="Inactive")
         ttk.Label(status_frame, textvariable=self.realtime_hg_var, 
-                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=3)
+                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
         
-        # Current Price (Large Display)
-        ttk.Label(status_frame, text="Current Price:", font=("Arial", 9)).pack(anchor=tk.W, pady=(10, 3))
+        # Current Price (Large Display - ลดขนาด font)
+        ttk.Label(status_frame, text="Current Price:", font=("Arial", 9)).pack(anchor=tk.W, pady=(8, 2))
         self.realtime_price_var = tk.StringVar(value="0.00")
         price_label = ttk.Label(status_frame, textvariable=self.realtime_price_var, 
-                               font=("Arial", 16, "bold"), foreground="blue")
-        price_label.pack(anchor=tk.W, pady=3)
+                               font=("Arial", 14, "bold"), foreground="blue")  # 🆕 ลดจาก 16 เป็น 14
+        price_label.pack(anchor=tk.W, pady=2)
         
-        # Margin Usage (Progress Bar Style)
-        ttk.Label(status_frame, text="Margin Usage:", font=("Arial", 9)).pack(anchor=tk.W, pady=(10, 3))
+        # Margin Usage (Progress Bar Style - ลดขนาด)
+        ttk.Label(status_frame, text="Margin Usage:", font=("Arial", 9)).pack(anchor=tk.W, pady=(8, 2))
         self.margin_progress_var = tk.DoubleVar(value=0.0)
         self.margin_progress = ttk.Progressbar(status_frame, variable=self.margin_progress_var, 
-                                               maximum=100, length=200)
-        self.margin_progress.pack(anchor=tk.W, pady=3)
+                                               maximum=100, length=180)  # 🆕 ลดจาก 200 เป็น 180
+        self.margin_progress.pack(anchor=tk.W, pady=2)
         self.margin_progress_label = ttk.Label(status_frame, text="0.0%", 
                                                font=("Arial", 8))
-        self.margin_progress_label.pack(anchor=tk.W, pady=2)
+        self.margin_progress_label.pack(anchor=tk.W, pady=1)
         
-        # Configure column weights
-        self.auto_display_frame.columnconfigure(0, weight=1)
-        self.auto_display_frame.columnconfigure(1, weight=2)
+        # Configure column weights (ปรับให้สมดุลขึ้น)
+        self.auto_display_frame.columnconfigure(0, weight=1, minsize=300)  # 🆕 กำหนดขนาดขั้นต่ำ
+        self.auto_display_frame.columnconfigure(1, weight=1, minsize=400)  # 🆕 เปลี่ยนจาก 2 เป็น 1 (สมดุลขึ้น)
         self.auto_display_frame.rowconfigure(0, weight=1)
         right_col.columnconfigure(0, weight=1)
         right_col.rowconfigure(0, weight=1)
