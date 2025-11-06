@@ -25,9 +25,9 @@ class TradingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Grid Trading System with HG - XAUUSD")
-        self.root.geometry("1200x700")  # 🆕 ปรับขนาดให้พอดีและสมดุล
-        self.root.minsize(1000, 600)  # 🆕 กำหนดขนาดขั้นต่ำ
-        self.root.maxsize(1400, 900)  # 🆕 กำหนดขนาดสูงสุด (ป้องกันเกินหน้าจอ)
+        self.root.geometry("1400x800")  # 🆕 เพิ่มขนาดให้เห็นทุกส่วน
+        self.root.minsize(1200, 700)  # 🆕 เพิ่มขนาดขั้นต่ำ
+        self.root.maxsize(1600, 1000)  # 🆕 เพิ่มขนาดสูงสุด
         
         self.api_base_url ="http://123.253.62.50:8080/api"
 
@@ -185,9 +185,9 @@ class TradingGUI:
         ttk.Button(control_frame, text="🧪 Test Price", 
                   command=self.test_price_connection).pack(side=tk.LEFT, padx=5)
         
-        # ============ Auto Mode Display (แยก row ใหม่) ============
-        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="8")
-        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)
+        # ============ Auto Mode Display (จำกัดขนาด - ไม่ให้ขยายเกินไป) ============
+        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="5")
+        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2)  # 🆕 ลบ tk.N, tk.S และลด padding
         self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
         
         self.create_auto_mode_ui()
@@ -349,11 +349,11 @@ class TradingGUI:
         self.price_var = tk.StringVar(value="0.00")
         ttk.Label(col2, textvariable=self.price_var).pack(anchor=tk.W)
         
-        # ============ Log Display (ปรับ row ใหม่) ============
-        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="8")
-        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)
+        # ============ Log Display (ปรับ row ใหม่ - ใช้พื้นที่ที่เหลือ) ============
+        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="5")
+        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=2)
         
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, width=80,  # 🆕 ลด height จาก 8 เป็น 6
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, width=80,  # 🆕 เพิ่ม height เป็น 8
                                                   wrap=tk.WORD, font=("Consolas", 9))
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
@@ -362,7 +362,7 @@ class TradingGUI:
         self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(3, weight=1)  # Auto Display Frame (row=3) - ขยายได้เมื่อเปิด Auto Mode
+        main_frame.rowconfigure(3, weight=0)  # 🆕 Auto Display Frame (row=3) - ไม่ขยาย (fixed size)
         main_frame.rowconfigure(4, weight=0)  # Grid/HG Settings (row=4) - ไม่ขยาย (fixed size)
         main_frame.rowconfigure(5, weight=0)  # Status Display (row=5) - ไม่ขยาย (fixed size)
         main_frame.rowconfigure(6, weight=1)  # Log Display (row=6) - ขยายได้ (ใช้พื้นที่ที่เหลือ)
@@ -374,12 +374,17 @@ class TradingGUI:
     
     def create_auto_mode_ui(self):
         """สร้าง UI สำหรับ Auto Mode"""
+        # ตั้งค่า grid weights สำหรับ Auto Display Frame
+        self.auto_display_frame.columnconfigure(0, weight=1)
+        self.auto_display_frame.columnconfigure(1, weight=1)
+        self.auto_display_frame.rowconfigure(0, weight=0)  # 🆕 ไม่ให้ขยาย (fixed size)
+        
         # สร้าง 2 columns หลัก
         left_col = ttk.Frame(self.auto_display_frame)
-        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 5))  # 🆕 ลบ tk.N, tk.S
         
         right_col = ttk.Frame(self.auto_display_frame)
-        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0))  # 🆕 ลบ tk.N, tk.S
         
         # ===== LEFT COLUMN =====
         
@@ -480,7 +485,7 @@ class TradingGUI:
         
         # สร้าง Notebook สำหรับ Right Column (แบ่งเป็น 2 tabs)
         right_notebook = ttk.Notebook(right_col)
-        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))
+        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))  # 🆕 ลบ tk.N, tk.S
         
         # Tab 1: Survivability Analysis
         survival_tab = ttk.Frame(right_notebook)
@@ -489,7 +494,7 @@ class TradingGUI:
         ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", 
                  font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
-        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=10, width=50,  # 🆕 ลด height จาก 12 เป็น 10
+        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=8, width=50,  # 🆕 ลด height จาก 10 เป็น 8
                                                             wrap=tk.WORD, font=("Consolas", 8))
         self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
