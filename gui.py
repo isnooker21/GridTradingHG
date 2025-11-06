@@ -185,16 +185,16 @@ class TradingGUI:
         ttk.Button(control_frame, text="🧪 Test Price", 
                   command=self.test_price_connection).pack(side=tk.LEFT, padx=5)
         
-        # ============ Auto Mode Display (จำกัดขนาด - ไม่ให้ขยายเกินไป) ============
+        # ============ Auto Mode Display (ให้ขยายได้เพื่อใช้พื้นที่เต็มที่) ============
         self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="5")
-        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2)  # 🆕 ลบ tk.N, tk.S และลด padding
+        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=2)  # 🆕 ให้ขยายได้
         self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
         
         self.create_auto_mode_ui()
         
         # ============ Grid Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
         self.grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="8")
-        self.grid_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N), pady=3, padx=(0, 5))
+        self.grid_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3, padx=(0, 5))  # 🆕 ให้ขยายได้
         
         # Direction
         ttk.Label(self.grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
@@ -238,7 +238,7 @@ class TradingGUI:
         
         # ============ HG Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
         self.hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="8")
-        self.hg_frame.grid(row=4, column=1, sticky=(tk.W, tk.E, tk.N), pady=3)
+        self.hg_frame.grid(row=4, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)  # 🆕 ให้ขยายได้
         
         # HG Enable/Disable
         self.hg_enabled_var = tk.BooleanVar(value=True)
@@ -309,7 +309,7 @@ class TradingGUI:
         
         # ============ Status Display (ปรับ row ใหม่) ============
         status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="8")
-        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
+        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)  # 🆕 ให้ขยายได้
         
         # สร้าง grid สำหรับแสดงข้อมูล
         info_frame = ttk.Frame(status_display_frame)
@@ -357,14 +357,17 @@ class TradingGUI:
                                                   wrap=tk.WORD, font=("Consolas", 9))
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
-        # ตั้งค่า grid weights สำหรับ responsive (ปรับให้ทุกส่วนเห็นได้เต็ม)
+        # ตั้งค่า grid weights สำหรับ responsive (ปรับให้ทุกส่วนเห็นได้เต็มและใช้พื้นที่เต็มที่)
         self.trading_tab.columnconfigure(0, weight=1)
         self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(3, weight=0)  # 🆕 Auto Display Frame (row=3) - ไม่ขยาย (fixed size)
-        main_frame.rowconfigure(4, weight=0)  # Grid/HG Settings (row=4) - ไม่ขยาย (fixed size)
-        main_frame.rowconfigure(5, weight=0)  # Status Display (row=5) - ไม่ขยาย (fixed size)
+        main_frame.rowconfigure(0, weight=0)  # Trading Mode - fixed size
+        main_frame.rowconfigure(1, weight=0)  # Connection Status - fixed size
+        main_frame.rowconfigure(2, weight=0)  # Controls - fixed size
+        main_frame.rowconfigure(3, weight=2)  # 🆕 Auto Display Frame (row=3) - ขยายได้เมื่อเปิด Auto Mode
+        main_frame.rowconfigure(4, weight=1)  # 🆕 Grid/HG Settings (row=4) - ขยายได้เมื่อเปิด Manual Mode
+        main_frame.rowconfigure(5, weight=0)  # Status Display (row=5) - fixed size
         main_frame.rowconfigure(6, weight=1)  # Log Display (row=6) - ขยายได้ (ใช้พื้นที่ที่เหลือ)
         
         # สไตล์ปุ่ม
@@ -374,17 +377,23 @@ class TradingGUI:
     
     def create_auto_mode_ui(self):
         """สร้าง UI สำหรับ Auto Mode"""
-        # ตั้งค่า grid weights สำหรับ Auto Display Frame
+        # ตั้งค่า grid weights สำหรับ Auto Display Frame (ให้ขยายได้)
         self.auto_display_frame.columnconfigure(0, weight=1)
         self.auto_display_frame.columnconfigure(1, weight=1)
-        self.auto_display_frame.rowconfigure(0, weight=0)  # 🆕 ไม่ให้ขยาย (fixed size)
+        self.auto_display_frame.rowconfigure(0, weight=1)  # 🆕 ให้ขยายได้
         
         # สร้าง 2 columns หลัก
         left_col = ttk.Frame(self.auto_display_frame)
-        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 5))  # 🆕 ลบ tk.N, tk.S
+        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))  # 🆕 ให้ขยายได้
         
         right_col = ttk.Frame(self.auto_display_frame)
-        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0))  # 🆕 ลบ tk.N, tk.S
+        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))  # 🆕 ให้ขยายได้
+        
+        # ตั้งค่า grid weights สำหรับ left_col และ right_col
+        left_col.columnconfigure(0, weight=1)
+        left_col.rowconfigure(0, weight=1)
+        right_col.columnconfigure(0, weight=1)
+        right_col.rowconfigure(0, weight=1)
         
         # ===== LEFT COLUMN =====
         
@@ -485,7 +494,7 @@ class TradingGUI:
         
         # สร้าง Notebook สำหรับ Right Column (แบ่งเป็น 2 tabs)
         right_notebook = ttk.Notebook(right_col)
-        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))  # 🆕 ลบ tk.N, tk.S
+        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))  # 🆕 ให้ขยายได้
         
         # Tab 1: Survivability Analysis
         survival_tab = ttk.Frame(right_notebook)
