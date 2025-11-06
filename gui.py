@@ -77,13 +77,13 @@ class TradingGUI:
     def create_trading_tab(self):
         """สร้าง content สำหรับ Trading Tab"""
         
-        # ============ Frame หลัก (ลด padding) ============
-        main_frame = ttk.Frame(self.trading_tab, padding="8")
+        # ============ Frame หลัก (ลด padding ให้กระชับ) ============
+        main_frame = ttk.Frame(self.trading_tab, padding="3")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # ============ Mode Selection (ลด padding) ============
-        mode_frame = ttk.LabelFrame(main_frame, text="🎮 Trading Mode", padding="8")
-        mode_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
+        # ============ Mode Selection (ลด padding ให้กระชับ) ============
+        mode_frame = ttk.LabelFrame(main_frame, text="🎮 Trading Mode", padding="5")
+        mode_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)
         
         self.auto_mode_var = tk.BooleanVar(value=False)
         ttk.Radiobutton(mode_frame, text="📝 Manual Mode", 
@@ -93,9 +93,9 @@ class TradingGUI:
                        variable=self.auto_mode_var, value=True,
                        command=self.toggle_mode).pack(side=tk.LEFT, padx=10)
         
-        # ============ Connection Status (ลด padding) ============
-        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="8")
-        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
+        # ============ Connection Status (ลด padding ให้กระชับ) ============
+        status_frame = ttk.LabelFrame(main_frame, text="📡 Connection & Account Info", padding="5")
+        status_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)
         
         # Row 0: Account Selection
         ttk.Label(status_frame, text="Select Account:").grid(row=0, column=0, sticky=tk.W)
@@ -161,9 +161,9 @@ class TradingGUI:
         self.expiry_date_label.grid(row=3, column=7, sticky=tk.W, padx=5, pady=(2, 0))
         self.expiry_date_var.trace_add("write", format_expiry_date)
 
-        # ============ Controls (ย้ายขึ้นมาก่อน Auto Display) ============
-        control_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="8")
-        control_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
+        # ============ Controls (ลด padding ให้กระชับ) ============
+        control_frame = ttk.LabelFrame(main_frame, text="🎮 Controls", padding="5")
+        control_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)
         
         self.start_button = ttk.Button(control_frame, text="▶ Start Trading", 
                                        command=self.start_trading, style="Start.TButton")
@@ -185,22 +185,22 @@ class TradingGUI:
         ttk.Button(control_frame, text="🧪 Test Price", 
                   command=self.test_price_connection).pack(side=tk.LEFT, padx=5)
         
-        # ============ Auto Mode Display (ให้ขยายได้เพื่อใช้พื้นที่เต็มที่) ============
-        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="5")
-        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=2)  # 🆕 ให้ขยายได้
+        # ============ Auto Mode Display (ลด padding ให้กระชับ) ============
+        self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="3")
+        self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)  # ไม่ขยาย
         self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
         
         self.create_auto_mode_ui()
         
-        # ============ Grid Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
-        self.grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="8")
-        self.grid_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3, padx=(0, 5))  # 🆕 ให้ขยายได้
+        # ============ Grid Settings (ลด padding ให้กระชับ) ============
+        self.grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings", padding="5")
+        self.grid_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=1, padx=(0, 3))  # ไม่ขยาย
         
         # Direction
-        ttk.Label(self.grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=1)
         self.direction_var = tk.StringVar(value="both")
         direction_frame = ttk.Frame(self.grid_frame)
-        direction_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, pady=3)
+        direction_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, pady=1)
         ttk.Radiobutton(direction_frame, text="Buy Only", variable=self.direction_var, 
                        value="buy").pack(side=tk.LEFT)
         ttk.Radiobutton(direction_frame, text="Sell Only", variable=self.direction_var, 
@@ -209,107 +209,106 @@ class TradingGUI:
                        value="both").pack(side=tk.LEFT)
         
         # Headers
-        ttk.Label(self.grid_frame, text="", width=18).grid(row=1, column=0, pady=3)
-        ttk.Label(self.grid_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
-                 foreground="green").grid(row=1, column=1, pady=3)
-        ttk.Label(self.grid_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
-                 foreground="red").grid(row=1, column=2, pady=3)
+        ttk.Label(self.grid_frame, text="", width=15).grid(row=1, column=0, pady=1)
+        ttk.Label(self.grid_frame, text="🟢 BUY", font=("Arial", 8, "bold"), 
+                 foreground="green").grid(row=1, column=1, pady=1)
+        ttk.Label(self.grid_frame, text="🔴 SELL", font=("Arial", 8, "bold"),
+                 foreground="red").grid(row=1, column=2, pady=1)
         
         # Grid Distance
-        ttk.Label(self.grid_frame, text="Grid Distance (pips):").grid(row=2, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Grid Distance:").grid(row=2, column=0, sticky=tk.W, pady=1)
         self.buy_grid_distance_var = tk.IntVar(value=50)
-        ttk.Entry(self.grid_frame, textvariable=self.buy_grid_distance_var, width=12).grid(row=2, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_grid_distance_var, width=10).grid(row=2, column=1, pady=1, padx=1)
         self.sell_grid_distance_var = tk.IntVar(value=50)
-        ttk.Entry(self.grid_frame, textvariable=self.sell_grid_distance_var, width=12).grid(row=2, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_grid_distance_var, width=10).grid(row=2, column=2, pady=1, padx=1)
         
         # Lot Size
-        ttk.Label(self.grid_frame, text="Lot Size:").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Lot Size:").grid(row=3, column=0, sticky=tk.W, pady=1)
         self.buy_lot_size_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(self.grid_frame, textvariable=self.buy_lot_size_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_lot_size_var, width=10).grid(row=3, column=1, pady=1, padx=1)
         self.sell_lot_size_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(self.grid_frame, textvariable=self.sell_lot_size_var, width=12).grid(row=3, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_lot_size_var, width=10).grid(row=3, column=2, pady=1, padx=1)
         
         # Take Profit
-        ttk.Label(self.grid_frame, text="Take Profit (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.grid_frame, text="Take Profit:").grid(row=4, column=0, sticky=tk.W, pady=1)
         self.buy_tp_var = tk.IntVar(value=50)
-        ttk.Entry(self.grid_frame, textvariable=self.buy_tp_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.buy_tp_var, width=10).grid(row=4, column=1, pady=1, padx=1)
         self.sell_tp_var = tk.IntVar(value=50)
-        ttk.Entry(self.grid_frame, textvariable=self.sell_tp_var, width=12).grid(row=4, column=2, pady=3, padx=2)
+        ttk.Entry(self.grid_frame, textvariable=self.sell_tp_var, width=10).grid(row=4, column=2, pady=1, padx=1)
         
-        # ============ HG Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
-        self.hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="8")
-        self.hg_frame.grid(row=4, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)  # 🆕 ให้ขยายได้
+        # ============ HG Settings (ลด padding ให้กระชับ) ============
+        self.hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings", padding="5")
+        self.hg_frame.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=1)  # ไม่ขยาย
         
         # HG Enable/Disable
         self.hg_enabled_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.hg_frame, text="Enable HG System", 
-                       variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=3)
+        ttk.Checkbutton(self.hg_frame, text="Enable HG", 
+                       variable=self.hg_enabled_var).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=1)
         
         # HG Direction
-        ttk.Label(self.hg_frame, text="HG Direction:").grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="Direction:").grid(row=1, column=0, sticky=tk.W, pady=1)
         self.hg_direction_var = tk.StringVar(value="buy")
         hg_direction_frame = ttk.Frame(self.hg_frame)
-        hg_direction_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=3)
-        ttk.Radiobutton(hg_direction_frame, text="Buy Only", variable=self.hg_direction_var, 
+        hg_direction_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=1)
+        ttk.Radiobutton(hg_direction_frame, text="Buy", variable=self.hg_direction_var, 
                        value="buy").pack(side=tk.LEFT)
-        ttk.Radiobutton(hg_direction_frame, text="Sell Only", variable=self.hg_direction_var, 
+        ttk.Radiobutton(hg_direction_frame, text="Sell", variable=self.hg_direction_var, 
                        value="sell").pack(side=tk.LEFT)
         ttk.Radiobutton(hg_direction_frame, text="Both", variable=self.hg_direction_var, 
                        value="both").pack(side=tk.LEFT)
         
-        
         # Headers
-        ttk.Label(self.hg_frame, text="", width=18).grid(row=2, column=0, pady=3)
-        ttk.Label(self.hg_frame, text="🟢 BUY", font=("Arial", 9, "bold"), 
-                 foreground="green").grid(row=2, column=1, pady=3)
-        ttk.Label(self.hg_frame, text="🔴 SELL", font=("Arial", 9, "bold"),
-                 foreground="red").grid(row=2, column=2, pady=3)
+        ttk.Label(self.hg_frame, text="", width=15).grid(row=2, column=0, pady=1)
+        ttk.Label(self.hg_frame, text="🟢 BUY", font=("Arial", 8, "bold"), 
+                 foreground="green").grid(row=2, column=1, pady=1)
+        ttk.Label(self.hg_frame, text="🔴 SELL", font=("Arial", 8, "bold"),
+                 foreground="red").grid(row=2, column=2, pady=1)
         
         # HG Distance
-        ttk.Label(self.hg_frame, text="HG Distance (pips):").grid(row=3, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="HG Distance:").grid(row=3, column=0, sticky=tk.W, pady=1)
         self.buy_hg_distance_var = tk.IntVar(value=200)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_distance_var, width=12).grid(row=3, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_distance_var, width=10).grid(row=3, column=1, pady=1, padx=1)
         self.sell_hg_distance_var = tk.IntVar(value=2000)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_distance_var, width=12).grid(row=3, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_distance_var, width=10).grid(row=3, column=2, pady=1, padx=1)
         
         # HG SL Trigger
-        ttk.Label(self.hg_frame, text="HG SL Trigger (pips):").grid(row=4, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="SL Trigger:").grid(row=4, column=0, sticky=tk.W, pady=1)
         self.buy_hg_sl_trigger_var = tk.IntVar(value=100)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_sl_trigger_var, width=12).grid(row=4, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_sl_trigger_var, width=10).grid(row=4, column=1, pady=1, padx=1)
         self.sell_hg_sl_trigger_var = tk.IntVar(value=1000)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_sl_trigger_var, width=12).grid(row=4, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_sl_trigger_var, width=10).grid(row=4, column=2, pady=1, padx=1)
         
         # HG Multiplier
-        ttk.Label(self.hg_frame, text="HG Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="Multiplier:").grid(row=5, column=0, sticky=tk.W, pady=1)
         self.buy_hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_multiplier_var, width=12).grid(row=5, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_multiplier_var, width=10).grid(row=5, column=1, pady=1, padx=1)
         self.sell_hg_multiplier_var = tk.DoubleVar(value=1.2)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_multiplier_var, width=12).grid(row=5, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_multiplier_var, width=10).grid(row=5, column=2, pady=1, padx=1)
         
         # HG Initial Lot
-        ttk.Label(self.hg_frame, text="HG Initial Lot:").grid(row=6, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="Initial Lot:").grid(row=6, column=0, sticky=tk.W, pady=1)
         self.buy_hg_initial_lot_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_initial_lot_var, width=12).grid(row=6, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_hg_initial_lot_var, width=10).grid(row=6, column=1, pady=1, padx=1)
         self.sell_hg_initial_lot_var = tk.DoubleVar(value=0.01)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_initial_lot_var, width=12).grid(row=6, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_hg_initial_lot_var, width=10).grid(row=6, column=2, pady=1, padx=1)
         
         # SL Buffer
-        ttk.Label(self.hg_frame, text="SL Buffer (pips):").grid(row=7, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="SL Buffer:").grid(row=7, column=0, sticky=tk.W, pady=1)
         self.buy_sl_buffer_var = tk.IntVar(value=10)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_sl_buffer_var, width=12).grid(row=7, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_sl_buffer_var, width=10).grid(row=7, column=1, pady=1, padx=1)
         self.sell_sl_buffer_var = tk.IntVar(value=20)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_sl_buffer_var, width=12).grid(row=7, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_sl_buffer_var, width=10).grid(row=7, column=2, pady=1, padx=1)
         
         # Max HG Levels
-        ttk.Label(self.hg_frame, text="Max HG Levels:").grid(row=8, column=0, sticky=tk.W, pady=3)
+        ttk.Label(self.hg_frame, text="Max Levels:").grid(row=8, column=0, sticky=tk.W, pady=1)
         self.buy_max_hg_levels_var = tk.IntVar(value=10)
-        ttk.Entry(self.hg_frame, textvariable=self.buy_max_hg_levels_var, width=12).grid(row=8, column=1, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.buy_max_hg_levels_var, width=10).grid(row=8, column=1, pady=1, padx=1)
         self.sell_max_hg_levels_var = tk.IntVar(value=10)
-        ttk.Entry(self.hg_frame, textvariable=self.sell_max_hg_levels_var, width=12).grid(row=8, column=2, pady=3, padx=2)
+        ttk.Entry(self.hg_frame, textvariable=self.sell_max_hg_levels_var, width=10).grid(row=8, column=2, pady=1, padx=1)
         
-        # ============ Status Display (ปรับ row ใหม่) ============
-        status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="8")
-        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)  # 🆕 ให้ขยายได้
+        # ============ Status Display (ลด padding ให้กระชับ) ============
+        status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="5")
+        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)  # ไม่ขยาย
         
         # สร้าง grid สำหรับแสดงข้อมูล
         info_frame = ttk.Frame(status_display_frame)
@@ -349,15 +348,15 @@ class TradingGUI:
         self.price_var = tk.StringVar(value="0.00")
         ttk.Label(col2, textvariable=self.price_var).pack(anchor=tk.W)
         
-        # ============ Log Display (ปรับ row ใหม่ - ใช้พื้นที่ที่เหลือ) ============
-        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="5")
-        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=2)
+        # ============ Log Display (ลด padding ให้กระชับ - ใช้พื้นที่ที่เหลือ) ============
+        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="3")
+        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=1)
         
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, width=80,  # 🆕 เพิ่ม height เป็น 8
-                                                  wrap=tk.WORD, font=("Consolas", 9))
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, width=80,  # ลด height
+                                                  wrap=tk.WORD, font=("Consolas", 8))
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
-        # ตั้งค่า grid weights สำหรับ responsive (ปรับให้ทุกส่วนเห็นได้เต็มและใช้พื้นที่เต็มที่)
+        # ตั้งค่า grid weights สำหรับ responsive (ทุกส่วน fixed size - Log Display ใช้พื้นที่ที่เหลือ)
         self.trading_tab.columnconfigure(0, weight=1)
         self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
@@ -365,10 +364,10 @@ class TradingGUI:
         main_frame.rowconfigure(0, weight=0)  # Trading Mode - fixed size
         main_frame.rowconfigure(1, weight=0)  # Connection Status - fixed size
         main_frame.rowconfigure(2, weight=0)  # Controls - fixed size
-        main_frame.rowconfigure(3, weight=2)  # 🆕 Auto Display Frame (row=3) - ขยายได้เมื่อเปิด Auto Mode
-        main_frame.rowconfigure(4, weight=1)  # 🆕 Grid/HG Settings (row=4) - ขยายได้เมื่อเปิด Manual Mode
-        main_frame.rowconfigure(5, weight=0)  # Status Display (row=5) - fixed size
-        main_frame.rowconfigure(6, weight=1)  # Log Display (row=6) - ขยายได้ (ใช้พื้นที่ที่เหลือ)
+        main_frame.rowconfigure(3, weight=0)  # Auto Display Frame - fixed size
+        main_frame.rowconfigure(4, weight=0)  # Grid/HG Settings - fixed size
+        main_frame.rowconfigure(5, weight=0)  # Status Display - fixed size
+        main_frame.rowconfigure(6, weight=1)  # Log Display - ขยายได้ (ใช้พื้นที่ที่เหลือ)
         
         # สไตล์ปุ่ม
         style = ttk.Style()
@@ -377,23 +376,17 @@ class TradingGUI:
     
     def create_auto_mode_ui(self):
         """สร้าง UI สำหรับ Auto Mode"""
-        # ตั้งค่า grid weights สำหรับ Auto Display Frame (ให้ขยายได้)
+        # ตั้งค่า grid weights สำหรับ Auto Display Frame (ไม่ขยาย)
         self.auto_display_frame.columnconfigure(0, weight=1)
         self.auto_display_frame.columnconfigure(1, weight=1)
-        self.auto_display_frame.rowconfigure(0, weight=1)  # 🆕 ให้ขยายได้
+        self.auto_display_frame.rowconfigure(0, weight=0)  # ไม่ขยาย
         
         # สร้าง 2 columns หลัก
         left_col = ttk.Frame(self.auto_display_frame)
-        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))  # 🆕 ให้ขยายได้
+        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 3))  # ไม่ขยาย
         
         right_col = ttk.Frame(self.auto_display_frame)
-        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))  # 🆕 ให้ขยายได้
-        
-        # ตั้งค่า grid weights สำหรับ left_col และ right_col
-        left_col.columnconfigure(0, weight=1)
-        left_col.rowconfigure(0, weight=1)
-        right_col.columnconfigure(0, weight=1)
-        right_col.rowconfigure(0, weight=1)
+        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(3, 0))  # ไม่ขยาย
         
         # ===== LEFT COLUMN =====
         
@@ -494,7 +487,7 @@ class TradingGUI:
         
         # สร้าง Notebook สำหรับ Right Column (แบ่งเป็น 2 tabs)
         right_notebook = ttk.Notebook(right_col)
-        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))  # 🆕 ให้ขยายได้
+        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 3))  # ไม่ขยาย
         
         # Tab 1: Survivability Analysis
         survival_tab = ttk.Frame(right_notebook)
@@ -503,9 +496,9 @@ class TradingGUI:
         ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", 
                  font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(0, 5))
         
-        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=8, width=50,  # 🆕 ลด height จาก 10 เป็น 8
+        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=6, width=50,  # ลด height
                                                             wrap=tk.WORD, font=("Consolas", 8))
-        self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
         
         # Tab 2: Trading Statistics
         stats_tab = ttk.Frame(right_notebook)
