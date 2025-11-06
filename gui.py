@@ -185,16 +185,16 @@ class TradingGUI:
         ttk.Button(control_frame, text="🧪 Test Price", 
                   command=self.test_price_connection).pack(side=tk.LEFT, padx=5)
         
-        # ============ Auto Mode Display (ลด padding และย้ายลงมา) ============
+        # ============ Auto Mode Display (แยก row ใหม่) ============
         self.auto_display_frame = ttk.LabelFrame(main_frame, text="🤖 Auto Mode Status", padding="8")
         self.auto_display_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)
         self.auto_display_frame.grid_remove()  # ซ่อนไว้ก่อน
         
         self.create_auto_mode_ui()
         
-        # ============ Grid Settings ============
+        # ============ Grid Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
         self.grid_frame = ttk.LabelFrame(main_frame, text="📊 Grid Settings (แยก Buy/Sell)", padding="8")
-        self.grid_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N), pady=3, padx=(0, 5))
+        self.grid_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N), pady=3, padx=(0, 5))
         
         # Direction
         ttk.Label(self.grid_frame, text="Direction:").grid(row=0, column=0, sticky=tk.W, pady=3)
@@ -236,9 +236,9 @@ class TradingGUI:
         self.sell_tp_var = tk.IntVar(value=50)
         ttk.Entry(self.grid_frame, textvariable=self.sell_tp_var, width=12).grid(row=4, column=2, pady=3, padx=2)
         
-        # ============ HG Settings ============
+        # ============ HG Settings (แยก row ใหม่ - row=4 เมื่อ Manual Mode) ============
         self.hg_frame = ttk.LabelFrame(main_frame, text="🛡️ HG Settings (แยก Buy/Sell)", padding="8")
-        self.hg_frame.grid(row=3, column=1, sticky=(tk.W, tk.E, tk.N), pady=3)
+        self.hg_frame.grid(row=4, column=1, sticky=(tk.W, tk.E, tk.N), pady=3)
         
         # HG Enable/Disable
         self.hg_enabled_var = tk.BooleanVar(value=True)
@@ -307,9 +307,9 @@ class TradingGUI:
         self.sell_max_hg_levels_var = tk.IntVar(value=10)
         ttk.Entry(self.hg_frame, textvariable=self.sell_max_hg_levels_var, width=12).grid(row=8, column=2, pady=3, padx=2)
         
-        # ============ Status Display (ลด padding และปรับ row) ============
+        # ============ Status Display (ปรับ row ใหม่) ============
         status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="8")
-        status_display_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)  # 🆕 ลบ expand=True
+        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=3)
         
         # สร้าง grid สำหรับแสดงข้อมูล
         info_frame = ttk.Frame(status_display_frame)
@@ -349,22 +349,23 @@ class TradingGUI:
         self.price_var = tk.StringVar(value="0.00")
         ttk.Label(col2, textvariable=self.price_var).pack(anchor=tk.W)
         
-        # ============ Log Display (ลด padding และปรับ row) ============
+        # ============ Log Display (ปรับ row ใหม่) ============
         log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="8")
-        log_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)
+        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=3)
         
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, width=80,  # 🆕 ลด height จาก 10 เป็น 8
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, width=80,  # 🆕 ลด height จาก 8 เป็น 6
                                                   wrap=tk.WORD, font=("Consolas", 9))
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
-        # ตั้งค่า grid weights สำหรับ responsive (ปรับให้ Controls ไม่ถูกผลัก)
+        # ตั้งค่า grid weights สำหรับ responsive (ปรับให้ทุกส่วนเห็นได้เต็ม)
         self.trading_tab.columnconfigure(0, weight=1)
         self.trading_tab.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(3, weight=1)  # 🆕 Auto Display Frame (row=3) ขยายได้
-        main_frame.rowconfigure(5, weight=1)  # 🆕 Log Display (row=5) ขยายได้
-        # 🆕 Controls (row=2) และ Status Display (row=4) ไม่ขยาย (ไม่ใช้ weight)
+        main_frame.rowconfigure(3, weight=1)  # Auto Display Frame (row=3) - ขยายได้เมื่อเปิด Auto Mode
+        main_frame.rowconfigure(4, weight=0)  # Grid/HG Settings (row=4) - ไม่ขยาย (fixed size)
+        main_frame.rowconfigure(5, weight=0)  # Status Display (row=5) - ไม่ขยาย (fixed size)
+        main_frame.rowconfigure(6, weight=1)  # Log Display (row=6) - ขยายได้ (ใช้พื้นที่ที่เหลือ)
         
         # สไตล์ปุ่ม
         style = ttk.Style()
@@ -827,23 +828,23 @@ class TradingGUI:
     def create_risk_calculator_tab(self):
         """สร้าง content สำหรับ Risk Calculator Tab"""
         
-        # ============ Frame หลัก ============
-        main_frame = ttk.Frame(self.risk_tab, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # ============ Frame หลัก (ใช้ grid แทน pack) ============
+        main_frame = ttk.Frame(self.risk_tab, padding="8")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # ============ Title ============
         title_label = ttk.Label(main_frame, text="🛡️ Risk Calculator", 
                                font=("Arial", 16, "bold"))
-        title_label.pack(pady=10)
+        title_label.grid(row=0, column=0, pady=(5, 3))
         
         desc_label = ttk.Label(main_frame, 
                               text="คำนวณว่าระบบจะทนได้กี่ pips ก่อน Margin Call ตาม Settings ปัจจุบัน",
                               font=("Arial", 9), foreground="gray")
-        desc_label.pack(pady=5)
+        desc_label.grid(row=1, column=0, pady=(0, 5))
         
         # ============ Info Frame ============
-        info_frame = ttk.LabelFrame(main_frame, text="ℹ️ Information", padding="15")
-        info_frame.pack(fill=tk.X, padx=20, pady=10)
+        info_frame = ttk.LabelFrame(main_frame, text="ℹ️ Information", padding="10")
+        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=10, pady=5)
         
         info_text = ttk.Label(info_frame, 
                              text="✨ Auto Calculate: ระบบจะคำนวณอัตโนมัติเมื่อเปิด Tab หรือ Save Settings\n" +
@@ -855,16 +856,22 @@ class TradingGUI:
         # Refresh Button
         refresh_button = ttk.Button(info_frame, text="🔄 Refresh Risk Analysis", 
                                 command=self.calculate_risk_analysis, style="Start.TButton")
-        refresh_button.pack(pady=10)
+        refresh_button.pack(pady=5)
         
         # ============ Results Frame ============
-        results_frame = ttk.LabelFrame(main_frame, text="📊 Risk Analysis Results", padding="15")
-        results_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        results_frame = ttk.LabelFrame(main_frame, text="📊 Risk Analysis Results", padding="10")
+        results_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=5)
         
-        # สร้าง ScrolledText สำหรับแสดงผล
-        self.risk_result_text = scrolledtext.ScrolledText(results_frame, height=25, width=90, 
+        # สร้าง ScrolledText สำหรับแสดงผล (ลด height)
+        self.risk_result_text = scrolledtext.ScrolledText(results_frame, height=20, width=90, 
                                                           wrap=tk.WORD, font=("Consolas", 10))
         self.risk_result_text.pack(fill=tk.BOTH, expand=True)
+        
+        # ตั้งค่า grid weights สำหรับ responsive
+        self.risk_tab.columnconfigure(0, weight=1)
+        self.risk_tab.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(3, weight=1)  # Results Frame ขยายได้
         
         # แสดงข้อความเริ่มต้น
         self.risk_result_text.insert(tk.END, "⏳ กำลังเตรียมข้อมูล...\n\n")
