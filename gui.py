@@ -41,6 +41,10 @@ class TradingGUI:
         self.auto_refresh_counter = 0
         self.auto_refresh_interval = 120  # รอบ (120 * 0.5s = 60 วินาที)
         
+        # 🆕 Performance: Throttling สำหรับ GUI updates
+        self.last_display_update = 0
+        self.display_update_interval = 1.0  # อัพเดท GUI ทุก 1 วินาที (ไม่ใช่ทุก 0.5 วินาที)
+        
         # สร้าง GUI components
         self.create_widgets()
         
@@ -470,18 +474,106 @@ class TradingGUI:
         
         # ===== RIGHT COLUMN =====
         
-        # Survivability Analysis (ลดความสูง)
-        ttk.Label(right_col, text="📊 SURVIVABILITY ANALYSIS", 
-                 font=("Arial", 9, "bold")).grid(row=0, column=0, sticky=tk.W, pady=(0, 3))
+        # สร้าง Notebook สำหรับ Right Column (แบ่งเป็น 2 tabs)
+        right_notebook = ttk.Notebook(right_col)
+        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 5))
         
-        self.survivability_text = scrolledtext.ScrolledText(right_col, height=22, width=55,
+        # Tab 1: Survivability Analysis
+        survival_tab = ttk.Frame(right_notebook)
+        right_notebook.add(survival_tab, text="📊 Survivability")
+        
+        ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", 
+                 font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=18, width=55,
                                                             wrap=tk.WORD, font=("Consolas", 8))
-        self.survivability_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.survivability_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Tab 2: Trading Statistics
+        stats_tab = ttk.Frame(right_notebook)
+        right_notebook.add(stats_tab, text="📈 Statistics")
+        
+        # Statistics Section
+        stats_frame = ttk.LabelFrame(stats_tab, text="📊 Trading Statistics", padding="10")
+        stats_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # สร้าง grid สำหรับแสดงสถิติ
+        stats_grid = ttk.Frame(stats_frame)
+        stats_grid.pack(fill=tk.BOTH, expand=True)
+        
+        # Row 1: Total Orders
+        ttk.Label(stats_grid, text="Total Orders:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.total_orders_var = tk.StringVar(value="0")
+        ttk.Label(stats_grid, textvariable=self.total_orders_var, 
+                 font=("Arial", 9, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Row 2: Active Positions
+        ttk.Label(stats_grid, text="Active Positions:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        self.active_positions_var = tk.StringVar(value="0")
+        ttk.Label(stats_grid, textvariable=self.active_positions_var, 
+                 font=("Arial", 9, "bold"), foreground="green").grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Row 3: Total P&L
+        ttk.Label(stats_grid, text="Total P&L:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        self.stats_pnl_var = tk.StringVar(value="$0.00")
+        self.stats_pnl_label = ttk.Label(stats_grid, textvariable=self.stats_pnl_var, 
+                                        font=("Arial", 10, "bold"), foreground="black")
+        self.stats_pnl_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Row 4: Win Rate
+        ttk.Label(stats_grid, text="Win Rate:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        self.win_rate_var = tk.StringVar(value="0.0%")
+        ttk.Label(stats_grid, textvariable=self.win_rate_var, 
+                 font=("Arial", 9, "bold"), foreground="green").grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Row 5: Average Profit
+        ttk.Label(stats_grid, text="Avg Profit:", font=("Arial", 9)).grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
+        self.avg_profit_var = tk.StringVar(value="$0.00")
+        ttk.Label(stats_grid, textvariable=self.avg_profit_var, 
+                 font=("Arial", 9)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Separator
+        ttk.Separator(stats_grid, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        
+        # Real-time Status Section
+        status_frame = ttk.LabelFrame(stats_tab, text="⚡ Real-time Status", padding="10")
+        status_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Grid Status
+        ttk.Label(status_frame, text="Grid Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=3)
+        self.realtime_grid_var = tk.StringVar(value="Inactive")
+        ttk.Label(status_frame, textvariable=self.realtime_grid_var, 
+                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=3)
+        
+        # HG Status
+        ttk.Label(status_frame, text="HG Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=3)
+        self.realtime_hg_var = tk.StringVar(value="Inactive")
+        ttk.Label(status_frame, textvariable=self.realtime_hg_var, 
+                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=3)
+        
+        # Current Price (Large Display)
+        ttk.Label(status_frame, text="Current Price:", font=("Arial", 9)).pack(anchor=tk.W, pady=(10, 3))
+        self.realtime_price_var = tk.StringVar(value="0.00")
+        price_label = ttk.Label(status_frame, textvariable=self.realtime_price_var, 
+                               font=("Arial", 16, "bold"), foreground="blue")
+        price_label.pack(anchor=tk.W, pady=3)
+        
+        # Margin Usage (Progress Bar Style)
+        ttk.Label(status_frame, text="Margin Usage:", font=("Arial", 9)).pack(anchor=tk.W, pady=(10, 3))
+        self.margin_progress_var = tk.DoubleVar(value=0.0)
+        self.margin_progress = ttk.Progressbar(status_frame, variable=self.margin_progress_var, 
+                                               maximum=100, length=200)
+        self.margin_progress.pack(anchor=tk.W, pady=3)
+        self.margin_progress_label = ttk.Label(status_frame, text="0.0%", 
+                                               font=("Arial", 8))
+        self.margin_progress_label.pack(anchor=tk.W, pady=2)
         
         # Configure column weights
         self.auto_display_frame.columnconfigure(0, weight=1)
         self.auto_display_frame.columnconfigure(1, weight=2)
         self.auto_display_frame.rowconfigure(0, weight=1)
+        right_col.columnconfigure(0, weight=1)
+        right_col.rowconfigure(0, weight=1)
     
     def toggle_mode(self):
         """สลับระหว่าง Manual และ Auto Mode"""
@@ -1433,9 +1525,13 @@ class TradingGUI:
                 except Exception as e:
                     logger.error(f"Error in risk alerts: {e}")
                 
-                # อัพเดท GUI (ใช้ root.after เพื่อป้องกัน thread issues)
+                # 🆕 อัพเดท GUI (ใช้ throttling เพื่อลดการอัพเดทบ่อยเกินไป)
                 try:
-                    self.root.after(0, self.update_display)
+                    import time
+                    current_time = time.time()
+                    if current_time - self.last_display_update >= self.display_update_interval:
+                        self.last_display_update = current_time
+                        self.root.after(0, self.update_display)
                 except Exception as e:
                     logger.error(f"Error scheduling GUI update: {e}")
                 
@@ -1452,7 +1548,7 @@ class TradingGUI:
                 threading.Event().wait(1.0)
     
     def update_display(self):
-        """อัพเดทการแสดงผลใน GUI"""
+        """อัพเดทการแสดงผลใน GUI (Optimized - ลดการอัพเดทบ่อยเกินไป)"""
         try:
             # อัพเดท Account Balance (real-time)
             if mt5_connection.connected:
@@ -1484,7 +1580,8 @@ class TradingGUI:
                 self.pnl_label.configure(foreground="black")
             
             # Margin
-            self.margin_var.set(f"{summary['margin_usage']:.1f}%")
+            margin_usage = summary['margin_usage']
+            self.margin_var.set(f"{margin_usage:.1f}%")
             
             # Grid Exposure
             self.grid_exposure_var.set(f"{summary['grid_net_volume']:.2f} lots")
@@ -1492,9 +1589,72 @@ class TradingGUI:
             # Current Price
             price_info = mt5_connection.get_current_price()
             if price_info:
-                self.price_var.set(f"{price_info['bid']:.2f}")
+                current_price = price_info['bid']
+                self.price_var.set(f"{current_price:.2f}")
             else:
                 self.price_var.set("No Price Data")
+                current_price = 0
+            
+            # 🆕 อัพเดท Statistics Tab (ถ้าเปิด Auto Mode)
+            if config.grid.auto_mode and hasattr(self, 'total_orders_var'):
+                try:
+                    # Total Orders
+                    total_orders = grid_status['active_levels'] + hg_status['placed_hg_count']
+                    self.total_orders_var.set(str(total_orders))
+                    
+                    # Active Positions
+                    active_positions = len(position_monitor.grid_positions) + len(position_monitor.hg_positions)
+                    self.active_positions_var.set(str(active_positions))
+                    
+                    # Total P&L (Statistics)
+                    self.stats_pnl_var.set(f"${pnl:.2f}")
+                    if pnl > 0:
+                        self.stats_pnl_label.configure(foreground="green")
+                    elif pnl < 0:
+                        self.stats_pnl_label.configure(foreground="red")
+                    else:
+                        self.stats_pnl_label.configure(foreground="black")
+                    
+                    # Win Rate (คำนวณจาก closed positions - ถ้ามี)
+                    # TODO: เพิ่มการติดตาม closed positions เพื่อคำนวณ win rate
+                    self.win_rate_var.set("N/A")
+                    
+                    # Average Profit
+                    if active_positions > 0:
+                        avg_profit = pnl / active_positions
+                        self.avg_profit_var.set(f"${avg_profit:.2f}")
+                    else:
+                        self.avg_profit_var.set("$0.00")
+                    
+                    # Real-time Status
+                    if grid_manager.active:
+                        self.realtime_grid_var.set(f"Active ({grid_status['active_levels']} levels)")
+                    else:
+                        self.realtime_grid_var.set("Inactive")
+                    
+                    if config.hg.enabled and self.hg_manager.active:
+                        self.realtime_hg_var.set(f"Active ({hg_status['placed_hg_count']} positions)")
+                    else:
+                        self.realtime_hg_var.set("Inactive")
+                    
+                    # Current Price (Large Display)
+                    if current_price > 0:
+                        self.realtime_price_var.set(f"{current_price:.2f}")
+                    
+                    # Margin Usage (Progress Bar)
+                    self.margin_progress_var.set(margin_usage)
+                    self.margin_progress_label.config(text=f"{margin_usage:.1f}%")
+                    
+                    # เปลี่ยนสี progress bar ตาม margin usage
+                    if hasattr(self, 'margin_progress'):
+                        if margin_usage >= 80:
+                            self.margin_progress_label.configure(foreground="red")
+                        elif margin_usage >= 60:
+                            self.margin_progress_label.configure(foreground="orange")
+                        else:
+                            self.margin_progress_label.configure(foreground="green")
+                except Exception as e:
+                    logger.debug(f"Error updating statistics: {e}")
             
             # แสดง warnings
             if summary['warnings']:
