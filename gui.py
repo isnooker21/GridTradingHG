@@ -375,216 +375,513 @@ class TradingGUI:
         style.configure("Emergency.TButton", foreground="red")
     
     def create_auto_mode_ui(self):
-        """สร้าง UI สำหรับ Auto Mode"""
-        # ตั้งค่า grid weights สำหรับ Auto Display Frame (ไม่ขยาย)
-        self.auto_display_frame.columnconfigure(0, weight=1)
-        self.auto_display_frame.columnconfigure(1, weight=1)
-        self.auto_display_frame.rowconfigure(0, weight=0)  # ไม่ขยาย
+        """สร้าง UI สำหรับ Auto Mode (Resilience Planner)"""
+        # Layout config
+        self.auto_display_frame.columnconfigure(0, weight=1, minsize=360)
+        self.auto_display_frame.columnconfigure(1, weight=1, minsize=420)
+        self.auto_display_frame.rowconfigure(0, weight=1)
+        self.auto_display_frame.rowconfigure(1, weight=1)
         
-        # สร้าง 2 columns หลัก
-        left_col = ttk.Frame(self.auto_display_frame)
-        left_col.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 3))  # ไม่ขยาย
+        # ====== Shared option definitions ======
+        self.resilience_distance_options = [
+            ("1,000 pips", 1000),
+            ("3,000 pips", 3000),
+            ("5,000 pips", 5000),
+            ("7,000 pips", 7000),
+            ("10,000 pips", 10000),
+            ("15,000 pips", 15000),
+            ("Custom", None),
+        ]
+        self.resilience_buffer_options = [
+            ("Ultra Safe (30%)", 0.3),
+            ("Safe (40%)", 0.4),
+            ("Balanced (60%)", 0.6),
+            ("Aggressive (80%)", 0.8),
+            ("Extreme (90%)", 0.9),
+            ("Custom", None),
+        ]
         
-        right_col = ttk.Frame(self.auto_display_frame)
-        right_col.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(3, 0))  # ไม่ขยาย
+        # ====== Variables ======
+        self.auto_balance_snapshot_var = tk.StringVar(value="-")
+        self.auto_equity_snapshot_var = tk.StringVar(value="-")
+        self.auto_free_margin_snapshot_var = tk.StringVar(value="-")
         
-        # ===== LEFT COLUMN =====
+        self.auto_distance_choice_var = tk.StringVar()
+        self.auto_distance_custom_var = tk.IntVar(value=config.grid.auto_resilience_distance)
         
-        # Market Analysis (กระชับขึ้น)
-        ttk.Label(left_col, text="📈 MARKET ANALYSIS", 
-                 font=("Arial", 9, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+        self.auto_buffer_choice_var = tk.StringVar()
+        self.auto_buffer_custom_var = tk.DoubleVar(value=round(config.grid.auto_drawdown_ratio * 100, 1))
         
-        # Direction
-        ttk.Label(left_col, text="Direction:", font=("Arial", 8)).grid(row=1, column=0, sticky=tk.W, pady=1)
-        self.auto_trend_var = tk.StringVar(value="-")
-        self.auto_trend_label = ttk.Label(left_col, textvariable=self.auto_trend_var,
-                                          font=("Arial", 8, "bold"), foreground="blue")
-        self.auto_trend_label.grid(row=1, column=1, sticky=tk.W, padx=5, pady=1)
+        self.auto_max_levels_var = tk.IntVar(value=config.grid.auto_max_levels)
+        self.auto_plan_status_var = tk.StringVar(value="Awaiting calculation")
         
-        # ATR
-        ttk.Label(left_col, text="ATR(14):", font=("Arial", 8)).grid(row=2, column=0, sticky=tk.W, pady=1)
-        self.auto_atr_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_atr_var, font=("Arial", 8)).grid(row=2, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Last Candle
-        ttk.Label(left_col, text="Candle:", font=("Arial", 8)).grid(row=3, column=0, sticky=tk.W, pady=1)
-        self.auto_candle_var = tk.StringVar(value="-")
-        self.auto_candle_label = ttk.Label(left_col, textvariable=self.auto_candle_var, font=("Arial", 8, "bold"))
-        self.auto_candle_label.grid(row=3, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Volume Level
-        ttk.Label(left_col, text="Volume:", font=("Arial", 8)).grid(row=4, column=0, sticky=tk.W, pady=1)
-        self.auto_volume_var = tk.StringVar(value="-")
-        self.auto_volume_label = ttk.Label(left_col, textvariable=self.auto_volume_var, font=("Arial", 8, "bold"))
-        self.auto_volume_label.grid(row=4, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Candle Size
-        ttk.Label(left_col, text="Size:", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=1)
-        self.auto_candle_pips_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_candle_pips_var, font=("Arial", 8)).grid(row=5, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Volume Ratio
-        ttk.Label(left_col, text="Vol Ratio:", font=("Arial", 8)).grid(row=6, column=0, sticky=tk.W, pady=1)
-        self.auto_volume_ratio_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_volume_ratio_var, font=("Arial", 8)).grid(row=6, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Last Update
-        ttk.Label(left_col, text="Updated:", font=("Arial", 8)).grid(row=7, column=0, sticky=tk.W, pady=1)
-        self.auto_update_time_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_update_time_var,
-                 foreground="gray", font=("Arial", 7)).grid(row=7, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Separator
-        ttk.Separator(left_col, orient='horizontal').grid(row=8, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
-        
-        # Auto Calculated Settings (กระชับขึ้น)
-        ttk.Label(left_col, text="⚙️ AUTO SETTINGS", 
-                 font=("Arial", 9, "bold")).grid(row=9, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
-        
-        # Grid Distance
-        ttk.Label(left_col, text="Grid:", font=("Arial", 8)).grid(row=10, column=0, sticky=tk.W, pady=1)
-        self.auto_grid_dist_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_grid_dist_var,
-                 font=("Arial", 8, "bold"), foreground="green").grid(row=10, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # HG Distance
-        ttk.Label(left_col, text="HG:", font=("Arial", 8)).grid(row=11, column=0, sticky=tk.W, pady=1)
-        self.auto_hg_dist_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_hg_dist_var,
-                 font=("Arial", 8, "bold"), foreground="orange").grid(row=11, column=1, sticky=tk.W, padx=5, pady=1)
-        
-        # Active Direction (ย้ายขึ้นมาใกล้ Market Analysis)
-        ttk.Label(left_col, text="Active:", font=("Arial", 8)).grid(row=12, column=0, sticky=tk.W, pady=1)
+        # Plan summary vars
         self.auto_direction_var = tk.StringVar(value="-")
-        ttk.Label(left_col, textvariable=self.auto_direction_var,
-                 font=("Arial", 8, "bold"), foreground="blue").grid(row=12, column=1, sticky=tk.W, padx=5, pady=1)
+        self.auto_plan_confidence_var = tk.StringVar(value="-")
+        self.auto_grid_dist_var = tk.StringVar(value="-")
+        self.auto_plan_grid_price_var = tk.StringVar(value="-")
+        self.auto_plan_levels_var = tk.StringVar(value="-")
+        self.auto_plan_requested_distance_var = tk.StringVar(value=f"{config.grid.auto_resilience_distance} pips")
+        self.auto_plan_distance_actual_var = tk.StringVar(value="-")
+        self.auto_hg_dist_var = tk.StringVar(value="-")
+        self.auto_plan_hg_price_var = tk.StringVar(value="-")
+        self.auto_plan_hg_sl_var = tk.StringVar(value="-")
+        self.auto_plan_lot_size_var = tk.StringVar(value=f"{config.grid.buy_lot_size:.2f} lots")
+        self.auto_plan_pip_value_var = tk.StringVar(value="$10.00 per lot")
+        self.auto_plan_drawdown_var = tk.StringVar(value="-")
+        self.auto_plan_target_drawdown_var = tk.StringVar(value="-")
+        self.auto_plan_margin_usage_var = tk.StringVar(value="-")
+        self.auto_plan_total_margin_var = tk.StringVar(value="-")
+        self.auto_plan_limit_reason_var = tk.StringVar(value="-")
         
-        # Separator
-        ttk.Separator(left_col, orient='horizontal').grid(row=13, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        # Market analysis vars
+        self.auto_trend_var = tk.StringVar(value="-")
+        self.auto_atr_var = tk.StringVar(value="-")
+        self.auto_candle_var = tk.StringVar(value="-")
+        self.auto_candle_pips_var = tk.StringVar(value="-")
+        self.auto_volume_var = tk.StringVar(value="-")
+        self.auto_volume_ratio_var = tk.StringVar(value="-")
+        self.auto_update_time_var = tk.StringVar(value="-")
         
-        # Risk Profile Selection (กระชับขึ้น)
-        ttk.Label(left_col, text="🛡️ RISK PROFILE", 
-                 font=("Arial", 9, "bold")).grid(row=14, column=0, columnspan=2, sticky=tk.W, pady=(0, 3))
+        # Risk profile (kept for backward compatibility, hidden from UI)
+        self.risk_profile_var = tk.StringVar(value=config.grid.risk_profile)
         
-        self.risk_profile_var = tk.StringVar(value="moderate")
+        # ====== LEFT COLUMN ======
+        left_col = ttk.Frame(self.auto_display_frame)
+        left_col.grid(row=0, column=0, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=(0, 4))
+        left_col.columnconfigure(0, weight=1)
         
-        ttk.Radiobutton(left_col, text="Very Conservative", 
-                       variable=self.risk_profile_var, value="very_conservative").grid(row=15, column=0, columnspan=2, sticky=tk.W, pady=1)
-        ttk.Radiobutton(left_col, text="Conservative", 
-                       variable=self.risk_profile_var, value="conservative").grid(row=16, column=0, columnspan=2, sticky=tk.W, pady=1)
-        ttk.Radiobutton(left_col, text="Moderate ⭐", 
-                       variable=self.risk_profile_var, value="moderate").grid(row=17, column=0, columnspan=2, sticky=tk.W, pady=1)
-        ttk.Radiobutton(left_col, text="Aggressive", 
-                       variable=self.risk_profile_var, value="aggressive").grid(row=18, column=0, columnspan=2, sticky=tk.W, pady=1)
-        ttk.Radiobutton(left_col, text="Very Aggressive", 
-                       variable=self.risk_profile_var, value="very_aggressive").grid(row=19, column=0, columnspan=2, sticky=tk.W, pady=1)
+        planner_frame = ttk.LabelFrame(left_col, text="🧠 Resilience Planner", padding="6")
+        planner_frame.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        planner_frame.columnconfigure(1, weight=1)
         
-        # Refresh Button
-        ttk.Button(left_col, text="🔄 Refresh Analysis", 
-                  command=self.refresh_auto_analysis).grid(row=20, column=0, columnspan=2, pady=(8, 0), sticky=(tk.W, tk.E))
+        ttk.Label(planner_frame, text="Balance:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
+        ttk.Label(planner_frame, textvariable=self.auto_balance_snapshot_var,
+                  font=("Arial", 9, "bold")).grid(row=0, column=1, sticky=tk.W, pady=(0, 2))
         
-        # ===== RIGHT COLUMN =====
+        ttk.Label(planner_frame, text="Equity:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, pady=2)
+        ttk.Label(planner_frame, textvariable=self.auto_equity_snapshot_var,
+                  font=("Arial", 9)).grid(row=1, column=1, sticky=tk.W, pady=2)
         
-        # สร้าง Notebook สำหรับ Right Column (แบ่งเป็น 2 tabs)
+        ttk.Label(planner_frame, text="Free Margin:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(planner_frame, textvariable=self.auto_free_margin_snapshot_var,
+                  font=("Arial", 9)).grid(row=2, column=1, sticky=tk.W, pady=2)
+        
+        ttk.Separator(planner_frame, orient='horizontal').grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        
+        ttk.Label(planner_frame, text="Drawdown capacity:", font=("Arial", 9, "bold")).grid(row=4, column=0, sticky=tk.W, pady=2)
+        distance_labels = [text for text, _ in self.resilience_distance_options]
+        self.drawdown_combo = ttk.Combobox(planner_frame, textvariable=self.auto_distance_choice_var,
+                                           values=distance_labels, state="readonly", width=18)
+        self.drawdown_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+        self.drawdown_combo.bind("<<ComboboxSelected>>", self.on_resilience_distance_change)
+        
+        ttk.Label(planner_frame, text="Custom distance (pips):", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=2)
+        self.custom_distance_entry = ttk.Entry(planner_frame, textvariable=self.auto_distance_custom_var, width=10)
+        self.custom_distance_entry.grid(row=5, column=1, sticky=tk.W, pady=2)
+        
+        ttk.Label(planner_frame, text="Safety buffer:", font=("Arial", 9, "bold")).grid(row=6, column=0, sticky=tk.W, pady=(4, 2))
+        buffer_labels = [text for text, _ in self.resilience_buffer_options]
+        self.buffer_combo = ttk.Combobox(planner_frame, textvariable=self.auto_buffer_choice_var,
+                                         values=buffer_labels, state="readonly", width=18)
+        self.buffer_combo.grid(row=6, column=1, sticky=(tk.W, tk.E), pady=(4, 2))
+        self.buffer_combo.bind("<<ComboboxSelected>>", self.on_resilience_buffer_change)
+        
+        ttk.Label(planner_frame, text="Custom buffer (% of balance):", font=("Arial", 8)).grid(row=7, column=0, sticky=tk.W, pady=2)
+        self.buffer_entry = ttk.Entry(planner_frame, textvariable=self.auto_buffer_custom_var, width=10)
+        self.buffer_entry.grid(row=7, column=1, sticky=tk.W, pady=2)
+        
+        ttk.Label(planner_frame, text="Max grid levels:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, pady=(6, 2))
+        self.max_levels_spin = tk.Spinbox(planner_frame, from_=1, to=200, textvariable=self.auto_max_levels_var, width=8)
+        self.max_levels_spin.grid(row=8, column=1, sticky=tk.W, pady=(6, 2))
+        
+        ttk.Button(planner_frame, text="🔄 Calculate plan", command=lambda: self.calculate_resilience_plan(show_message=True)).grid(
+            row=9, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(8, 2))
+        
+        ttk.Label(planner_frame, textvariable=self.auto_plan_status_var,
+                  font=("Arial", 8), foreground="gray").grid(row=10, column=0, columnspan=2, sticky=tk.W, pady=(0, 2))
+        
+        # Market snapshot
+        market_frame = ttk.LabelFrame(left_col, text="📈 Market Snapshot", padding="6")
+        market_frame.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(6, 0))
+        market_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(market_frame, text="Direction:", font=("Arial", 8)).grid(row=0, column=0, sticky=tk.W, pady=1)
+        self.auto_trend_label = ttk.Label(market_frame, textvariable=self.auto_trend_var,
+                                          font=("Arial", 8, "bold"), foreground="blue")
+        self.auto_trend_label.grid(row=0, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="ATR(14):", font=("Arial", 8)).grid(row=1, column=0, sticky=tk.W, pady=1)
+        ttk.Label(market_frame, textvariable=self.auto_atr_var, font=("Arial", 8)).grid(row=1, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="Candle:", font=("Arial", 8)).grid(row=2, column=0, sticky=tk.W, pady=1)
+        self.auto_candle_label = ttk.Label(market_frame, textvariable=self.auto_candle_var, font=("Arial", 8, "bold"))
+        self.auto_candle_label.grid(row=2, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="Candle size:", font=("Arial", 8)).grid(row=3, column=0, sticky=tk.W, pady=1)
+        ttk.Label(market_frame, textvariable=self.auto_candle_pips_var, font=("Arial", 8)).grid(row=3, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="Volume:", font=("Arial", 8)).grid(row=4, column=0, sticky=tk.W, pady=1)
+        self.auto_volume_label = ttk.Label(market_frame, textvariable=self.auto_volume_var, font=("Arial", 8, "bold"))
+        self.auto_volume_label.grid(row=4, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="Volume ratio:", font=("Arial", 8)).grid(row=5, column=0, sticky=tk.W, pady=1)
+        ttk.Label(market_frame, textvariable=self.auto_volume_ratio_var, font=("Arial", 8)).grid(row=5, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Label(market_frame, text="Last update:", font=("Arial", 8)).grid(row=6, column=0, sticky=tk.W, pady=1)
+        ttk.Label(market_frame, textvariable=self.auto_update_time_var,
+                  font=("Arial", 7), foreground="gray").grid(row=6, column=1, sticky=tk.W, padx=4, pady=1)
+        
+        ttk.Button(market_frame, text="🔄 Refresh analysis", command=self.refresh_auto_analysis).grid(
+            row=7, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(8, 0))
+        
+        # ====== RIGHT COLUMN ======
+        right_col = ttk.Frame(self.auto_display_frame)
+        right_col.grid(row=0, column=1, rowspan=2, sticky=(tk.N, tk.S, tk.E, tk.W), padx=(4, 0))
+        right_col.columnconfigure(0, weight=1)
+        right_col.rowconfigure(0, weight=1)
+        
         right_notebook = ttk.Notebook(right_col)
-        right_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 3))  # ไม่ขยาย
+        right_notebook.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         
-        # Tab 1: Survivability Analysis
+        # Tab: Plan Summary
+        plan_tab = ttk.Frame(right_notebook)
+        right_notebook.add(plan_tab, text="🧭 Plan Summary")
+        
+        plan_summary = ttk.LabelFrame(plan_tab, text="📋 Auto Plan Overview", padding="8")
+        plan_summary.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        
+        summary_grid = ttk.Frame(plan_summary)
+        summary_grid.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(summary_grid, text="Direction:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_direction_var,
+                  font=("Arial", 10, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Confidence:", font=("Arial", 9)).grid(row=0, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_confidence_var,
+                  font=("Arial", 9)).grid(row=0, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Requested distance:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_requested_distance_var,
+                  font=("Arial", 9, "bold")).grid(row=1, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Actual distance:", font=("Arial", 9)).grid(row=1, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_distance_actual_var,
+                  font=("Arial", 9)).grid(row=1, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Grid distance:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_grid_dist_var,
+                  font=("Arial", 9, "bold"), foreground="green").grid(row=2, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Grid step (price):", font=("Arial", 9)).grid(row=2, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_grid_price_var,
+                  font=("Arial", 9)).grid(row=2, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Max grid levels:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_levels_var,
+                  font=("Arial", 9, "bold")).grid(row=3, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Lot size used:", font=("Arial", 9)).grid(row=3, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_lot_size_var,
+                  font=("Arial", 9)).grid(row=3, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="HG distance:", font=("Arial", 9)).grid(row=4, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_hg_dist_var,
+                  font=("Arial", 9), foreground="orange").grid(row=4, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="HG step (price):", font=("Arial", 9)).grid(row=4, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_hg_price_var,
+                  font=("Arial", 9)).grid(row=4, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="HG SL trigger:", font=("Arial", 9)).grid(row=5, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_hg_sl_var,
+                  font=("Arial", 9)).grid(row=5, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Pip value:", font=("Arial", 9)).grid(row=5, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_pip_value_var,
+                  font=("Arial", 9)).grid(row=5, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Estimated drawdown:", font=("Arial", 9)).grid(row=6, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_drawdown_var,
+                  font=("Arial", 9, "bold")).grid(row=6, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Target drawdown:", font=("Arial", 9)).grid(row=6, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_target_drawdown_var,
+                  font=("Arial", 9)).grid(row=6, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Margin usage:", font=("Arial", 9)).grid(row=7, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_margin_usage_var,
+                  font=("Arial", 9, "bold")).grid(row=7, column=1, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, text="Margin needed:", font=("Arial", 9)).grid(row=7, column=2, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_total_margin_var,
+                  font=("Arial", 9)).grid(row=7, column=3, sticky=tk.W, padx=4, pady=2)
+        
+        ttk.Label(summary_grid, text="Constraints:", font=("Arial", 9)).grid(row=8, column=0, sticky=tk.W, padx=4, pady=2)
+        ttk.Label(summary_grid, textvariable=self.auto_plan_limit_reason_var,
+                  font=("Arial", 9), foreground="gray").grid(row=8, column=1, columnspan=3, sticky=tk.W, padx=4, pady=2)
+        
+        # Tab: Survivability
         survival_tab = ttk.Frame(right_notebook)
         right_notebook.add(survival_tab, text="📊 Survivability")
         
-        ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", 
-                 font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(0, 5))
+        ttk.Label(survival_tab, text="📊 SURVIVABILITY ANALYSIS", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(4, 2), padx=6)
+        self.survivability_text = scrolledtext.ScrolledText(
+            survival_tab, height=8, wrap=tk.WORD, font=("Consolas", 9))
+        self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
         
-        self.survivability_text = scrolledtext.ScrolledText(survival_tab, height=6, width=50,  # ลด height
-                                                            wrap=tk.WORD, font=("Consolas", 8))
-        self.survivability_text.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
-        
-        # Tab 2: Trading Statistics
+        # Tab: Statistics & Status
         stats_tab = ttk.Frame(right_notebook)
         right_notebook.add(stats_tab, text="📈 Statistics")
         
-        # Statistics Section (ลด padding)
         stats_frame = ttk.LabelFrame(stats_tab, text="📊 Trading Statistics", padding="8")
-        stats_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=3)
+        stats_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
         
-        # สร้าง grid สำหรับแสดงสถิติ
         stats_grid = ttk.Frame(stats_frame)
         stats_grid.pack(fill=tk.BOTH, expand=True)
         
-        # Row 1: Total Orders (ลด padding)
         ttk.Label(stats_grid, text="Total Orders:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=3)
         self.total_orders_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.total_orders_var, 
-                 font=("Arial", 9, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5, pady=3)
+        ttk.Label(stats_grid, textvariable=self.total_orders_var,
+                  font=("Arial", 9, "bold"), foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Row 2: Active Positions
         ttk.Label(stats_grid, text="Active Positions:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, padx=5, pady=3)
         self.active_positions_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.active_positions_var, 
-                 font=("Arial", 9, "bold"), foreground="green").grid(row=1, column=1, sticky=tk.W, padx=5, pady=3)
+        ttk.Label(stats_grid, textvariable=self.active_positions_var,
+                  font=("Arial", 9, "bold"), foreground="green").grid(row=1, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Row 3: Total P&L
         ttk.Label(stats_grid, text="Total P&L:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, padx=5, pady=3)
         self.stats_pnl_var = tk.StringVar(value="$0.00")
-        self.stats_pnl_label = ttk.Label(stats_grid, textvariable=self.stats_pnl_var, 
-                                        font=("Arial", 10, "bold"), foreground="black")
+        self.stats_pnl_label = ttk.Label(stats_grid, textvariable=self.stats_pnl_var,
+                                         font=("Arial", 10, "bold"), foreground="black")
         self.stats_pnl_label.grid(row=2, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Row 4: Win Rate
         ttk.Label(stats_grid, text="Win Rate:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, padx=5, pady=3)
-        self.win_rate_var = tk.StringVar(value="0.0%")
-        ttk.Label(stats_grid, textvariable=self.win_rate_var, 
-                 font=("Arial", 9, "bold"), foreground="green").grid(row=3, column=1, sticky=tk.W, padx=5, pady=3)
+        self.win_rate_var = tk.StringVar(value="N/A")
+        ttk.Label(stats_grid, textvariable=self.win_rate_var,
+                  font=("Arial", 9, "bold"), foreground="green").grid(row=3, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Row 5: Average Profit
         ttk.Label(stats_grid, text="Avg Profit:", font=("Arial", 9)).grid(row=4, column=0, sticky=tk.W, padx=5, pady=3)
         self.avg_profit_var = tk.StringVar(value="$0.00")
-        ttk.Label(stats_grid, textvariable=self.avg_profit_var, 
-                 font=("Arial", 9)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=3)
+        ttk.Label(stats_grid, textvariable=self.avg_profit_var,
+                  font=("Arial", 9)).grid(row=4, column=1, sticky=tk.W, padx=5, pady=3)
         
-        # Separator (ลด padding)
         ttk.Separator(stats_grid, orient='horizontal').grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
-        # Real-time Status Section (ลด padding)
         status_frame = ttk.LabelFrame(stats_tab, text="⚡ Real-time Status", padding="8")
-        status_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=3)
+        status_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
         
-        # Grid Status (ลด padding)
         ttk.Label(status_frame, text="Grid Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=2)
         self.realtime_grid_var = tk.StringVar(value="Inactive")
-        ttk.Label(status_frame, textvariable=self.realtime_grid_var, 
-                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
+        ttk.Label(status_frame, textvariable=self.realtime_grid_var,
+                  font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
         
-        # HG Status
         ttk.Label(status_frame, text="HG Status:", font=("Arial", 9)).pack(anchor=tk.W, pady=2)
         self.realtime_hg_var = tk.StringVar(value="Inactive")
-        ttk.Label(status_frame, textvariable=self.realtime_hg_var, 
-                 font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
+        ttk.Label(status_frame, textvariable=self.realtime_hg_var,
+                  font=("Arial", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=2)
         
-        # Current Price (Large Display - ลดขนาด font)
-        ttk.Label(status_frame, text="Current Price:", font=("Arial", 9)).pack(anchor=tk.W, pady=(8, 2))
+        ttk.Label(status_frame, text="Current Price:", font=("Arial", 9)).pack(anchor=tk.W, pady=(6, 2))
         self.realtime_price_var = tk.StringVar(value="0.00")
-        price_label = ttk.Label(status_frame, textvariable=self.realtime_price_var, 
-                               font=("Arial", 14, "bold"), foreground="blue")  # 🆕 ลดจาก 16 เป็น 14
-        price_label.pack(anchor=tk.W, pady=2)
+        ttk.Label(status_frame, textvariable=self.realtime_price_var,
+                  font=("Arial", 14, "bold"), foreground="blue").pack(anchor=tk.W, pady=2)
         
-        # Margin Usage (Progress Bar Style - ลดขนาด)
-        ttk.Label(status_frame, text="Margin Usage:", font=("Arial", 9)).pack(anchor=tk.W, pady=(8, 2))
+        ttk.Label(status_frame, text="Margin Usage:", font=("Arial", 9)).pack(anchor=tk.W, pady=(6, 2))
         self.margin_progress_var = tk.DoubleVar(value=0.0)
-        self.margin_progress = ttk.Progressbar(status_frame, variable=self.margin_progress_var, 
-                                               maximum=100, length=180)  # 🆕 ลดจาก 200 เป็น 180
+        self.margin_progress = ttk.Progressbar(status_frame, variable=self.margin_progress_var,
+                                               maximum=100, length=200)
         self.margin_progress.pack(anchor=tk.W, pady=2)
-        self.margin_progress_label = ttk.Label(status_frame, text="0.0%", 
-                                               font=("Arial", 8))
+        self.margin_progress_label = ttk.Label(status_frame, text="0.0%", font=("Arial", 8))
         self.margin_progress_label.pack(anchor=tk.W, pady=1)
         
-        # Configure column weights (ปรับให้สมดุลขึ้น)
-        self.auto_display_frame.columnconfigure(0, weight=1, minsize=300)  # 🆕 กำหนดขนาดขั้นต่ำ
-        self.auto_display_frame.columnconfigure(1, weight=1, minsize=400)  # 🆕 เปลี่ยนจาก 2 เป็น 1 (สมดุลขึ้น)
-        self.auto_display_frame.rowconfigure(0, weight=1)
-        right_col.columnconfigure(0, weight=1)
-        right_col.rowconfigure(0, weight=1)
+        # Initial state
+        self._update_custom_distance_state()
+        self._update_custom_buffer_state()
+    
+    def on_resilience_distance_change(self, event=None):
+        """เมื่อผู้ใช้เปลี่ยนค่า Drawdown capacity"""
+        self._update_custom_distance_state()
+        self.calculate_resilience_plan()
+    
+    def _update_custom_distance_state(self):
+        """เปิด/ปิดช่องกรอก custom distance ตามการเลือก"""
+        if not hasattr(self, "custom_distance_entry"):
+            return
+        selected = self.auto_distance_choice_var.get()
+        if selected == "Custom":
+            self.custom_distance_entry.configure(state=tk.NORMAL)
+        else:
+            self.custom_distance_entry.configure(state=tk.DISABLED)
+            # sync ค่า custom ให้ตรงกับ preset เพื่อรองรับการบันทึก
+            for label, value in self.resilience_distance_options:
+                if label == selected and value is not None:
+                    self.auto_distance_custom_var.set(value)
+                    break
+    
+    def on_resilience_buffer_change(self, event=None):
+        """เมื่อผู้ใช้เปลี่ยนค่า Safety buffer"""
+        self._update_custom_buffer_state()
+        self.calculate_resilience_plan()
+    
+    def _update_custom_buffer_state(self):
+        """เปิด/ปิด custom buffer entry"""
+        if not hasattr(self, "buffer_entry"):
+            return
+        selected = self.auto_buffer_choice_var.get()
+        if selected == "Custom":
+            self.buffer_entry.configure(state=tk.NORMAL)
+        else:
+            self.buffer_entry.configure(state=tk.DISABLED)
+            for label, value in self.resilience_buffer_options:
+                if label == selected and value is not None:
+                    self.auto_buffer_custom_var.set(round(value * 100, 1))
+                    break
+    
+    def _get_resilience_distance_value(self) -> int:
+        """คืนค่า drawdown distance (pips)"""
+        selected = self.auto_distance_choice_var.get()
+        for label, value in self.resilience_distance_options:
+            if label == selected:
+                if value is None:
+                    return max(100, int(self.auto_distance_custom_var.get()))
+                return max(100, int(value))
+        # fallback
+        return max(100, int(self.auto_distance_custom_var.get()))
+    
+    def _get_buffer_ratio_value(self) -> float:
+        """คืนค่าสัดส่วน buffer (0-1)"""
+        selected = self.auto_buffer_choice_var.get()
+        for label, value in self.resilience_buffer_options:
+            if label == selected:
+                if value is None:
+                    percent = float(self.auto_buffer_custom_var.get())
+                    percent = max(10.0, min(percent, 95.0))
+                    return percent / 100.0
+                return max(0.1, min(value, 0.95))
+        percent = float(self.auto_buffer_custom_var.get())
+        percent = max(10.0, min(percent, 95.0))
+        return percent / 100.0
+    
+    def calculate_resilience_plan(self, show_message: bool = False):
+        """คำนวณแผน Auto Mode ตาม balance และ parameter ที่ตั้ง"""
+        try:
+            if not mt5_connection.connected:
+                self.auto_plan_status_var.set("✗ Connect to MT5 to calculate plan")
+                return None
+            
+            distance = self._get_resilience_distance_value()
+            buffer_ratio = self._get_buffer_ratio_value()
+            max_levels = max(1, int(self.auto_max_levels_var.get()))
+            
+            config.update_grid_settings(
+                auto_mode=True,
+                auto_strategy="resilience",
+                auto_resilience_distance=distance,
+                auto_drawdown_ratio=buffer_ratio,
+                auto_max_levels=max_levels
+            )
+            
+            from auto_config_manager import auto_config_manager
+            settings = auto_config_manager.calculate_auto_settings(config.grid.risk_profile)
+            self._apply_auto_plan_settings(settings)
+            
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.auto_plan_status_var.set(f"✓ Plan updated · {timestamp}")
+            if show_message:
+                self.log_message(f"✓ Auto plan recalculated (distance {distance} pips, buffer {buffer_ratio*100:.0f}%)")
+            return settings
+        except Exception as e:
+            self.auto_plan_status_var.set(f"✗ Plan calculation failed: {e}")
+            if show_message:
+                messagebox.showerror("Auto Plan Error", str(e))
+            logger.error(f"Auto plan calculation error: {e}", exc_info=True)
+            return None
+    
+    def _apply_auto_plan_settings(self, settings: dict):
+        """อัพเดท UI ตามผลลัพธ์ของ auto settings"""
+        if not settings:
+            return
+        
+        plan = settings.get("plan", {})
+        
+        direction = settings.get("direction", "both").upper()
+        confidence = settings.get("confidence", "-")
+        grid_distance = settings.get("buy_grid_distance", 0)
+        hg_distance = settings.get("buy_hg_distance", 0)
+        hg_sl = settings.get("buy_hg_sl_trigger", 0)
+        
+        self.auto_direction_var.set(direction)
+        self.auto_plan_confidence_var.set(confidence)
+        self.auto_grid_dist_var.set(f"{grid_distance} pips")
+        self.auto_plan_grid_price_var.set(f"{plan.get('grid_distance_price', 0.0):.2f}")
+        self.auto_plan_levels_var.set(str(plan.get("grid_levels", "-")))
+        self.auto_plan_requested_distance_var.set(f"{plan.get('requested_distance', 0)} pips")
+        self.auto_plan_distance_actual_var.set(f"{plan.get('actual_distance', 0)} pips")
+        self.auto_hg_dist_var.set(f"{hg_distance} pips")
+        self.auto_plan_hg_price_var.set(f"{plan.get('hg_distance_price', 0.0):.2f}")
+        self.auto_plan_hg_sl_var.set(f"{hg_sl} pips")
+        self.auto_plan_lot_size_var.set(f"{plan.get('lot_size', config.grid.buy_lot_size):.2f} lots")
+        self.auto_plan_pip_value_var.set(f"${plan.get('pip_value_per_lot', 10.0):.2f} per lot")
+        
+        est_drawdown = plan.get("estimated_drawdown")
+        tgt_drawdown = plan.get("target_drawdown")
+        margin_usage = plan.get("margin_usage_percent")
+        total_margin = plan.get("total_margin")
+        
+        self.auto_plan_drawdown_var.set("-" if est_drawdown is None else f"${est_drawdown:,.2f}")
+        self.auto_plan_target_drawdown_var.set("-" if tgt_drawdown is None else f"${tgt_drawdown:,.2f}")
+        self.auto_plan_margin_usage_var.set("-" if margin_usage is None else f"{margin_usage:.1f}%")
+        self.auto_plan_total_margin_var.set("-" if total_margin is None else f"${total_margin:,.2f}")
+        
+        # แสดง constraint
+        drawdown_limit = plan.get("levels_from_drawdown")
+        margin_limit = plan.get("levels_from_margin")
+        levels = plan.get("grid_levels")
+        limit_msgs = []
+        if levels is not None and drawdown_limit is not None and levels >= max(drawdown_limit, 0):
+            limit_msgs.append("drawdown")
+        if levels is not None and margin_limit is not None and levels >= max(margin_limit, 0):
+            limit_msgs.append("margin")
+        self.auto_plan_limit_reason_var.set(", ".join(limit_msgs) if limit_msgs else "None")
+        
+        # Snapshot account info
+        if "balance" in plan:
+            self.auto_balance_snapshot_var.set(f"${plan['balance']:,.2f}")
+        if "equity" in plan:
+            self.auto_equity_snapshot_var.set(f"${plan['equity']:,.2f}")
+        if "free_margin" in plan:
+            self.auto_free_margin_snapshot_var.set(f"${plan['free_margin']:,.2f}")
+        
+        # อัพเดท config.last_auto_update เพื่อให้ grid_manager ใช้ค่าใหม่ทันที
+        config.grid.last_auto_update = datetime.now()
+
+    def _load_resilience_settings_to_ui(self):
+        """โหลดค่าจาก config มาใส่ UI Auto Mode"""
+        if not hasattr(self, "resilience_distance_options"):
+            return
+        
+        distance = getattr(config.grid, "auto_resilience_distance", 5000)
+        buffer_ratio = getattr(config.grid, "auto_drawdown_ratio", 0.6)
+        max_levels = getattr(config.grid, "auto_max_levels", 40)
+        
+        # Distance combo
+        selected_distance_label = "Custom"
+        for label, value in self.resilience_distance_options:
+            if value == distance:
+                selected_distance_label = label
+                break
+        self.auto_distance_choice_var.set(selected_distance_label)
+        self.auto_distance_custom_var.set(distance)
+        self._update_custom_distance_state()
+        
+        # Buffer combo
+        selected_buffer_label = None
+        for label, value in self.resilience_buffer_options:
+            if value is not None and abs(value - buffer_ratio) < 0.001:
+                selected_buffer_label = label
+                break
+        if selected_buffer_label:
+            self.auto_buffer_choice_var.set(selected_buffer_label)
+            self.auto_buffer_custom_var.set(round(buffer_ratio * 100, 1))
+        else:
+            self.auto_buffer_choice_var.set("Custom")
+            self.auto_buffer_custom_var.set(round(buffer_ratio * 100, 1))
+        self._update_custom_buffer_state()
+        
+        self.auto_max_levels_var.set(max_levels)
     
     def toggle_mode(self):
         """สลับระหว่าง Manual และ Auto Mode"""
@@ -677,21 +974,14 @@ class TradingGUI:
                 f" (Next: {(atr_info['timestamp'] + timedelta(minutes=15)).strftime('%H:%M:%S')})"
             )
             
-            # คำนวณ Auto Settings
-            settings = auto_config_manager.calculate_auto_settings(
-                risk_profile=self.risk_profile_var.get()
-            )
-            
-            # แสดง Auto Calculated Settings
-            self.auto_grid_dist_var.set(f"{settings['buy_grid_distance']} pips")
-            self.auto_hg_dist_var.set(f"{settings['buy_hg_distance']} pips")
-            self.auto_direction_var.set(settings['direction'].upper())
+            # คำนวณ Auto Settings และอัพเดทแผน
+            settings = self.calculate_resilience_plan()
             
             # คำนวณ Survivability
             account_info = mt5_connection.get_account_info()
             price_info = mt5_connection.get_current_price()
             
-            if account_info and price_info:
+            if settings and account_info and price_info:
                 survival = auto_config_manager.calculate_survivability(
                     balance=account_info['balance'],
                     price=price_info['bid'],
@@ -775,17 +1065,8 @@ class TradingGUI:
                 f" (Next: {(atr_info['timestamp'] + timedelta(minutes=15)).strftime('%H:%M:%S')})"
             )
             
-            # คำนวณ Auto Settings (เร็ว)
-            settings = auto_config_manager.calculate_auto_settings(
-                risk_profile=self.risk_profile_var.get()
-            )
-            
-            # แสดง Auto Calculated Settings
-            self.auto_grid_dist_var.set(f"{settings['buy_grid_distance']} pips")
-            self.auto_hg_dist_var.set(f"{settings['buy_hg_distance']} pips")
-            self.auto_direction_var.set(settings['direction'].upper())
-            
-            # ไม่คำนวณ Survivability เพื่อความเร็ว
+            # อัพเดท Auto Plan แบบย่อ (ไม่แสดง popup)
+            self.calculate_resilience_plan()
             
         except Exception as e:
             logger.error(f"Error refreshing auto analysis (light): {e}")
@@ -1073,6 +1354,8 @@ class TradingGUI:
                 
                 # Auto calculate risk หลังจาก connect สำเร็จ
                 self.root.after(500, self.auto_calculate_risk)
+                # คำนวณ Auto Plan หลังจากเชื่อมต่อ
+                self.root.after(500, self.calculate_resilience_plan)
             else:
                 self.log_message("✓ Connected to MT5 (cannot retrieve account info)")
                 
@@ -1155,7 +1438,11 @@ class TradingGUI:
             # Auto Mode: บันทึกเฉพาะ risk_profile และ auto_mode
             config.update_grid_settings(
                 auto_mode=True,
-                risk_profile=self.risk_profile_var.get()
+                risk_profile=self.risk_profile_var.get(),
+                auto_strategy="resilience",
+                auto_resilience_distance=self._get_resilience_distance_value(),
+                auto_drawdown_ratio=self._get_buffer_ratio_value(),
+                auto_max_levels=max(1, int(self.auto_max_levels_var.get()))
             )
         else:
             # Manual Mode: บันทึกค่าทั้งหมด
@@ -1216,6 +1503,8 @@ class TradingGUI:
         self.auto_mode_var.set(config.grid.auto_mode)
         if hasattr(self, 'risk_profile_var'):
             self.risk_profile_var.set(config.grid.risk_profile)
+        if hasattr(self, 'auto_distance_choice_var'):
+            self._load_resilience_settings_to_ui()
         
         # Grid Settings
         self.direction_var.set(config.grid.direction)
@@ -1572,6 +1861,12 @@ class TradingGUI:
                 account_info = mt5_connection.get_account_info()
                 if account_info:
                     self.balance_var.set(f"${account_info['balance']:,.2f}")
+                    if hasattr(self, 'auto_balance_snapshot_var'):
+                        self.auto_balance_snapshot_var.set(f"${account_info['balance']:,.2f}")
+                    if hasattr(self, 'auto_equity_snapshot_var') and 'equity' in account_info:
+                        self.auto_equity_snapshot_var.set(f"${account_info['equity']:,.2f}")
+                    if hasattr(self, 'auto_free_margin_snapshot_var') and 'free_margin' in account_info:
+                        self.auto_free_margin_snapshot_var.set(f"${account_info['free_margin']:,.2f}")
             
             # อัพเดท Grid status
             grid_status = grid_manager.get_grid_status()

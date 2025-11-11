@@ -27,6 +27,10 @@ class GridSettings:
     auto_mode: bool = False
     risk_profile: str = "moderate"  # very_conservative, conservative, moderate, aggressive, very_aggressive
     last_auto_update: Optional[datetime] = None
+    auto_strategy: str = "resilience"  # atr_profile, resilience
+    auto_resilience_distance: int = 5000  # ระยะที่ต้องการให้ระบบทน (pips)
+    auto_drawdown_ratio: float = 0.6  # สัดส่วน balance ที่ยอมให้ drawdown (0-1)
+    auto_max_levels: int = 40  # จำนวน grid levels สูงสุดที่อนุญาต (สำหรับ resilience mode)
     
     # Backward compatibility (ค่าเดิม)
     grid_distance: int = 50
@@ -121,6 +125,10 @@ class Config:
                 # Auto Mode Settings
                 self.grid.auto_mode = parser.getboolean('Grid', 'auto_mode', fallback=False)
                 self.grid.risk_profile = parser.get('Grid', 'risk_profile', fallback='moderate')
+                self.grid.auto_strategy = parser.get('Grid', 'auto_strategy', fallback='resilience')
+                self.grid.auto_resilience_distance = parser.getint('Grid', 'auto_resilience_distance', fallback=5000)
+                self.grid.auto_drawdown_ratio = parser.getfloat('Grid', 'auto_drawdown_ratio', fallback=0.6)
+                self.grid.auto_max_levels = parser.getint('Grid', 'auto_max_levels', fallback=40)
                 last_update_str = parser.get('Grid', 'last_auto_update', fallback='')
                 if last_update_str:
                     try:
@@ -196,6 +204,10 @@ class Config:
             # Auto Mode Settings
             'auto_mode': str(self.grid.auto_mode),
             'risk_profile': self.grid.risk_profile,
+            'auto_strategy': self.grid.auto_strategy,
+            'auto_resilience_distance': str(self.grid.auto_resilience_distance),
+            'auto_drawdown_ratio': str(self.grid.auto_drawdown_ratio),
+            'auto_max_levels': str(self.grid.auto_max_levels),
             'last_auto_update': self.grid.last_auto_update.isoformat() if self.grid.last_auto_update else '',
             # Backward compatibility
             'grid_distance': str(self.grid.grid_distance),

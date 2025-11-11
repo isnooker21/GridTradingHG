@@ -1,9 +1,10 @@
 # auto_config_manager.py
 # คำนวณค่า Config อัตโนมัติสำหรับ Grid Trading with HG
 
-from typing import Dict, Optional
+from typing import Dict
 import logging
 from datetime import datetime
+from math import floor
 from config import config
 
 logging.basicConfig(level=logging.WARNING)
@@ -69,6 +70,21 @@ class AutoConfigManager:
         return RISK_PROFILES[profile]
     
     def calculate_auto_settings(self, risk_profile: str = "moderate") -> Dict:
+        """
+        พิจารณา strategy แล้วคำนวณค่า config อัตโนมัติ
+        """
+        strategy = getattr(config.grid, "auto_strategy", "resilience")
+        
+        if strategy == "resilience":
+            try:
+                return self._calculate_resilience_settings()
+            except Exception as e:
+                logger.error(f"Resilience calculation failed: {e}", exc_info=True)
+                # fallback ไปใช้ ATR profile
+        
+        return self._calculate_atr_profile_settings(risk_profile=risk_profile)
+
+    def _calculate_atr_profile_settings(self, risk_profile: str = "moderate") -> Dict:
         """
         คำนวณค่า Config อัตโนมัติ
         
@@ -152,7 +168,7 @@ class AutoConfigManager:
             return settings
             
         except Exception as e:
-            logger.error(f"Error calculating auto settings: {e}")
+            logger.error(f"Error calculating ATR profile settings: {e}")
             # Return default safe settings
             return {
                 "direction": "both",
@@ -167,6 +183,136 @@ class AutoConfigManager:
                 "risk_profile": risk_profile,
                 "timestamp": datetime.now()
             }
+
+    def _calculate_resilience_settings(self) -> Dict:
+        """
+        คำนวณ Auto Settings ตามแนวคิด Resilience (ตั้งจาก balance + ระยะที่ทนได้)
+        """
+        from mt5_connection import mt5_connection
+        from candle_volume_detector import candle_volume_detector
+        from atr_calculator import atr_calculator  # ใช้เพื่อเก็บ reference ATR
+        
+        account_info = mt5_connection.get_account_info()
+        price_info = mt5_connection.get_current_price()
+        
+        if not account_info or not price_info:
+            raise ValueError("Account or price data unavailable (MT5 not connected?)")
+        
+        balance = float(account_info.get("balance", 0.0))
+        equity = float(account_info.get("equity", balance))
+        free_margin = float(account_info.get("free_margin", 0.0))
+        leverage = int(account_info.get("leverage", 100)) or 100
+        price = float(price_info.get("bid") or price_info.get("ask") or 0.0)
+        if price <= 0:
+            raise ValueError("Invalid price data from MT5")
+        
+        distance_pips = max(int(getattr(config.grid, "auto_resilience_distance", 5000)), 100)
+        drawdown_ratio = getattr(config.grid, "auto_drawdown_ratio", 0.6)
+        drawdown_ratio = max(0.1, min(drawdown_ratio, 0.95))
+        max_levels_cap = max(1, int(getattr(config.grid, "auto_max_levels", 40)))
+        
+        lot_size = max(config.grid.buy_lot_size, 0.01)
+        # ถ้า manual sell lot ไม่เท่ากัน ให้ใช้เฉลี่ย
+        if config.grid.sell_lot_size > 0:
+            lot_size = max(lot_size, config.grid.sell_lot_size)
+        
+        target_drawdown = balance * drawdown_ratio
+        pip_value_per_lot = 10.0  # XAUUSD: 1 lot = $10/pip
+        contract_size = 100  # XAUUSD
+        margin_per_lot = (price * contract_size) / leverage
+        margin_per_position = margin_per_lot * lot_size
+        
+        if lot_size <= 0 or distance_pips <= 0:
+            raise ValueError("Invalid lot size or distance for resilience calculation")
+        
+        denominator = pip_value_per_lot * lot_size * distance_pips
+        if denominator <= 0:
+            raise ValueError("Invalid parameters for level calculation")
+        
+        # จำนวน level ที่ยังอยู่ในขอบเขต drawdown
+        levels_from_drawdown = floor((2 * target_drawdown) / denominator - 1)
+        max_margin_budget = balance * (config.risk.max_margin_usage / 100.0)
+        if margin_per_position > 0:
+            levels_from_margin = floor(max_margin_budget / margin_per_position)
+        else:
+            levels_from_margin = max_levels_cap
+        
+        levels = max(1, min(levels_from_drawdown, levels_from_margin, max_levels_cap))
+        
+        # ป้องกันกรณี levels_from_drawdown < 1
+        if levels < 1:
+            levels = 1
+        
+        grid_distance = max(int(round(distance_pips / levels)), 5)
+        actual_distance = grid_distance * levels
+        
+        total_margin = margin_per_position * levels
+        if balance > 0:
+            margin_usage_percent = min(100.0, (total_margin / balance) * 100.0)
+        else:
+            margin_usage_percent = 0.0
+        
+        drawdown_per_level = pip_value_per_lot * lot_size * grid_distance
+        estimated_drawdown = drawdown_per_level * (levels * (levels + 1) / 2)
+        
+        hg_distance = max(grid_distance * 4, grid_distance * 2)
+        # อย่าให้ HG ไกลกว่าเป้าระยะที่ทนได้มากเกิน
+        hg_distance = min(hg_distance, max(distance_pips, grid_distance * 2))
+        hg_sl_trigger = max(int(hg_distance * 0.5), grid_distance)
+        
+        # Direction จาก Candle + Volume
+        direction_info = candle_volume_detector.get_full_analysis()
+        if direction_info:
+            direction = direction_info.get("direction", "both")
+            confidence = direction_info.get("confidence", "LOW")
+        else:
+            direction = "both"
+            confidence = "LOW"
+        
+        atr_value = atr_calculator.calculate_atr() or 0.0
+        
+        settings = {
+            "direction": direction,
+            "confidence": confidence,
+            "buy_grid_distance": int(grid_distance),
+            "sell_grid_distance": int(grid_distance),
+            "buy_hg_distance": int(hg_distance),
+            "sell_hg_distance": int(hg_distance),
+            "buy_hg_sl_trigger": int(hg_sl_trigger),
+            "sell_hg_sl_trigger": int(hg_sl_trigger),
+            "atr": atr_value,
+            "risk_profile": config.grid.risk_profile,
+            "timestamp": datetime.now(),
+            "plan": {
+                "requested_distance": int(distance_pips),
+                "actual_distance": int(actual_distance),
+                "grid_levels": int(levels),
+                "lot_size": float(lot_size),
+                "estimated_drawdown": float(estimated_drawdown),
+                "target_drawdown": float(target_drawdown),
+                "drawdown_ratio": float(drawdown_ratio),
+                "margin_usage_percent": float(margin_usage_percent),
+                "total_margin": float(total_margin),
+                "balance": float(balance),
+                "equity": float(equity),
+                "free_margin": float(free_margin),
+                "price": float(price),
+                "margin_per_position": float(margin_per_position),
+                "pip_value_per_lot": float(pip_value_per_lot),
+                "grid_distance_price": float(config.pips_to_price(grid_distance)),
+                "hg_distance_price": float(config.pips_to_price(hg_distance)),
+                "levels_from_drawdown": int(max(levels_from_drawdown, 0)),
+                "levels_from_margin": int(max(levels_from_margin, 0))
+            }
+        }
+        
+        logger.info("Resilience settings calculated:")
+        logger.info(f"  Balance: ${balance:,.2f} | Distance Target: {distance_pips} pips")
+        logger.info(f"  Levels: {levels} | Grid Distance: {grid_distance} pips")
+        logger.info(f"  HG Distance: {hg_distance} pips | Margin Usage: {margin_usage_percent:.1f}%")
+        logger.info(f"  Estimated Drawdown: ${estimated_drawdown:,.2f}")
+        
+        return settings
     
     def calculate_survivability(self, balance: float, price: float, 
                                 leverage: int, settings: Dict) -> Dict:
