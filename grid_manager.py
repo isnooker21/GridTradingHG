@@ -634,67 +634,65 @@ class GridManager:
         grid_entry_placed_buy = False
         grid_entry_placed_sell = False
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Buy (Grid Entry - ราคาเคลื่อนไหวปกติ)
-        if config.grid.direction in ['buy', 'both']:
+        direction = config.grid.direction
+        
+        # ตรวจสอบเงื่อนไขการวางไม้ Buy
+        if direction in ['buy', 'both']:
             should_place_buy = False
             
-            # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Buy เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
-            if config.grid.direction == 'both' and not has_buy_position:
+            if not has_buy_position:
                 should_place_buy = True
-                logger.debug(f"🔄 [BOTH Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
+                logger.debug(f"🆕 [{direction.upper()} Mode] No BUY positions found - placing new BUY at {current_price:.2f}")
+            else:
+                if direction == 'both':
+                    if latest_sell_price and current_price <= (latest_sell_price - sell_grid_distance_price):
+                        should_place_buy = True
+                        logger.debug(f"[Grid Entry] Price down from SELL: New BUY at {current_price:.2f}")
+                else:  # direction == 'buy'
+                    if latest_buy_price and current_price <= (latest_buy_price - buy_grid_distance_price):
+                        should_place_buy = True
+                        logger.debug(f"[Grid Entry] BUY ladder: price moved {buy_grid_distance_price:.2f} → add BUY at {current_price:.2f}")
             
-            # เงื่อนไขปกติ: ราคาลงห่างจาก latest_sell >= Sell Grid Distance
-            # (Grid Entry: วางเมื่อราคาเคลื่อนไหวปกติ - จากไม้ฝั่งตรงข้าม)
-            elif latest_sell_price and current_price <= (latest_sell_price - sell_grid_distance_price):
-                should_place_buy = True
-                logger.debug(f"[Grid Entry] Price down from SELL: New BUY at {current_price:.2f}")
-            
-            # วางไม้ Buy ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
             if should_place_buy:
-                # ตรวจสอบว่ามีไม้ Buy อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_buy = False
                 nearby_distance = buy_grid_distance_price * 0.5
-                
                 for pos in grid_positions:
                     if pos['type'] == 'buy' and abs(pos['open_price'] - current_price) < nearby_distance:
                         has_nearby_buy = True
                         break
-                
                 if not has_nearby_buy:
                     self.place_new_buy_order(current_price)
-                    grid_entry_placed_buy = True  # 🆕 ตั้ง flag ว่า Grid Entry วาง Buy แล้ว
+                    grid_entry_placed_buy = True
                 else:
                     logger.debug(f"⚠ Skipped BUY - nearby order exists at {current_price:.2f}")
         
-        # ตรวจสอบเงื่อนไขการวางไม้ Sell (Grid Entry - ราคาเคลื่อนไหวปกติ)
-        if config.grid.direction in ['sell', 'both']:
+        # ตรวจสอบเงื่อนไขการวางไม้ Sell
+        if direction in ['sell', 'both']:
             should_place_sell = False
             
-            # เงื่อนไขพิเศษสำหรับโหมด 'both': ถ้าไม่มีไม้ Sell เลย → วางทันที (แก้ปัญหาไม้ฝั่งเดียวหมด)
-            if config.grid.direction == 'both' and not has_sell_position:
+            if not has_sell_position:
                 should_place_sell = True
-                logger.debug(f"🔄 [BOTH Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
+                logger.debug(f"🆕 [{direction.upper()} Mode] No SELL positions found - placing new SELL at {current_price:.2f}")
+            else:
+                if direction == 'both':
+                    if latest_buy_price and current_price >= (latest_buy_price + buy_grid_distance_price):
+                        should_place_sell = True
+                        logger.debug(f"[Grid Entry] Price up from BUY: New SELL at {current_price:.2f}")
+                else:  # direction == 'sell'
+                    if latest_sell_price and current_price >= (latest_sell_price + sell_grid_distance_price):
+                        should_place_sell = True
+                        logger.debug(f"[Grid Entry] SELL ladder: price moved {sell_grid_distance_price:.2f} → add SELL at {current_price:.2f}")
             
-            # เงื่อนไขปกติ: ราคาขึ้นห่างจาก latest_buy >= Buy Grid Distance
-            # (Grid Entry: วางเมื่อราคาเคลื่อนไหวปกติ - จากไม้ฝั่งตรงข้าม)
-            elif latest_buy_price and current_price >= (latest_buy_price + buy_grid_distance_price):
-                should_place_sell = True
-                logger.debug(f"[Grid Entry] Price up from BUY: New SELL at {current_price:.2f}")
-            
-            # วางไม้ Sell ถ้าเข้าเงื่อนไขข้อใดข้อหนึ่ง
             if should_place_sell:
-                # ตรวจสอบว่ามีไม้ Sell อยู่ใกล้ราคาปัจจุบันไหม (ป้องกันการวางซ้ำ)
                 has_nearby_sell = False
                 nearby_distance = sell_grid_distance_price * 0.5
-                
                 for pos in grid_positions:
                     if pos['type'] == 'sell' and abs(pos['open_price'] - current_price) < nearby_distance:
                         has_nearby_sell = True
                         break
-                
                 if not has_nearby_sell:
                     self.place_new_sell_order(current_price)
-                    grid_entry_placed_sell = True  # 🆕 ตั้ง flag ว่า Grid Entry วาง Sell แล้ว
+                    grid_entry_placed_sell = True
                 else:
                     logger.debug(f"⚠ Skipped SELL - nearby order exists at {current_price:.2f}")
         

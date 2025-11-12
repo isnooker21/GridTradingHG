@@ -35,7 +35,8 @@ class PositionMonitor:
             for pos in self.positions:
                 if config.mt5.comment_hg in pos['comment']:
                     self.hg_positions.append(pos)
-                elif config.mt5.comment_grid in pos['comment']:
+                elif (config.mt5.comment_grid in pos['comment'] or
+                      config.mt5.comment_auto in pos['comment']):
                     self.grid_positions.append(pos)
             
             # อัพเดท P&L
