@@ -3,7 +3,7 @@
 
 import configparser
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 
@@ -31,6 +31,7 @@ class GridSettings:
     auto_resilience_distance: int = 5000  # ระยะที่ต้องการให้ระบบทน (pips)
     auto_drawdown_ratio: float = 0.6  # สัดส่วน balance ที่ยอมให้ drawdown (0-1)
     auto_max_levels: int = 40  # จำนวน grid levels สูงสุดที่อนุญาต (สำหรับ resilience mode)
+    auto_plan: dict = field(default_factory=dict)  # เก็บข้อมูลแผนล่าสุดสำหรับใช้งานภายใน
     
     # Backward compatibility (ค่าเดิม)
     grid_distance: int = 50

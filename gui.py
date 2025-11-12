@@ -855,6 +855,7 @@ class TradingGUI:
         
         # อัพเดท config.last_auto_update เพื่อให้ grid_manager ใช้ค่าใหม่ทันที
         config.grid.last_auto_update = datetime.now()
+        config.grid.auto_plan = plan
 
     def _load_resilience_settings_to_ui(self):
         """โหลดค่าจาก config มาใส่ UI Auto Mode"""

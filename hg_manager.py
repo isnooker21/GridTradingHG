@@ -2,10 +2,14 @@
 # ไฟล์จัดการระบบ Hedge (HG)
 
 from typing import List, Dict, Optional
+import time
 import logging
 from mt5_connection import mt5_connection
 from position_monitor import position_monitor
 from config import config
+from hg_profiles import get_hg_profile
+from hg_zone_detector import detect_zones
+from atr_calculator import atr_calculator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +24,79 @@ class HGManager:
         self.placed_hg = {}  # เก็บ HG positions ที่เปิดอยู่
         self.closed_hg_levels = set()  # เก็บ HG levels ที่ถูกปิดแล้ว (SL/TP)
         self.start_price = 0.0
+        self.zone_cache: Dict[str, List[Dict]] = {'buy': [], 'sell': [], 'generated_at': 0}
+        self.last_zone_refresh = 0.0
+        self.current_profile: Optional[Dict] = None
+        self.active_zone_ids = set()
+    
+    def _get_active_profile(self) -> Dict:
+        plan = getattr(config.grid, "auto_plan", {}) or {}
+        distance = int(plan.get('requested_distance', config.grid.auto_resilience_distance))
+        profile = get_hg_profile(distance)
+        self.current_profile = profile
+        return profile
+    
+    def _refresh_zones_if_needed(self):
+        profile = self._get_active_profile()
+        refresh_secs = profile['zone_refresh_secs']
+        now = time.time()
+        if now - self.last_zone_refresh < refresh_secs:
+            return
+        if not mt5_connection.connected:
+            return
+        
+        rates = mt5_connection.get_recent_rates(count=profile['lookback_bars'])
+        if not rates:
+            return
+        
+        atr_value = atr_calculator.calculate_atr()
+        if atr_value is None or atr_value <= 0:
+            atr_value = profile['fallback_distance_factor'] * config.grid.buy_grid_distance
+        
+        zones = detect_zones(atr_value, profile, rates)
+        self.zone_cache = zones
+        self.last_zone_refresh = now
+        current_ids = {zone['id'] for zone in zones.get('buy', [])} | {zone['id'] for zone in zones.get('sell', [])}
+        self.active_zone_ids = {zone_id for zone_id in self.active_zone_ids if zone_id in current_ids}
+    
+    def _build_zone_trigger(self, zone: Dict, hg_type: str, current_price: float) -> Dict:
+        profile = self.current_profile or self._get_active_profile()
+        level_key = f"HG_ZONE_{hg_type.upper()}_{zone['id']}"
+        partial_trigger = max(5.0, zone['width_pips'] * profile['partial_close_trigger_factor'])
+        return {
+            'level_key': level_key,
+            'price': current_price,
+            'type': hg_type,
+            'level': 0,
+            'source': 'zone',
+            'zone_id': zone['id'],
+            'zone_width_pips': zone['width_pips'],
+            'partial_close_ratio': profile['partial_close_ratio'],
+            'partial_close_trigger_pips': partial_trigger,
+            'zone_score': zone['score'],
+        }
+    
+    def _get_zone_triggers(self, current_price: float) -> List[Dict]:
+        triggers: List[Dict] = []
+        profile = self.current_profile or self._get_active_profile()
+        if not self.zone_cache:
+            return triggers
+        
+        allowed = []
+        if config.hg.direction in ['buy', 'both']:
+            allowed.append('buy')
+        if config.hg.direction in ['sell', 'both']:
+            allowed.append('sell')
+        
+        for zone_type in allowed:
+            for zone in self.zone_cache.get(zone_type, []):
+                if zone['id'] in self.active_zone_ids:
+                    continue
+                if zone['lower'] <= current_price <= zone['upper']:
+                    trigger = self._build_zone_trigger(zone, zone_type, current_price)
+                    triggers.append(trigger)
+                    self.active_zone_ids.add(zone['id'])
+        return triggers
         
     def check_hg_trigger(self, current_price: float) -> List[Dict]:
         """
@@ -168,7 +245,13 @@ class HGManager:
                 'type': hg_info['type'],
                 'lot': hg_lot,
                 'breakeven_set': False,
-                'level': hg_info['level']
+                'level': hg_info.get('level'),
+                'source': hg_info.get('source', 'distance'),
+                'zone_id': hg_info.get('zone_id'),
+                'zone_width_pips': hg_info.get('zone_width_pips'),
+                'partial_close_ratio': hg_info.get('partial_close_ratio'),
+                'partial_close_trigger_pips': hg_info.get('partial_close_trigger_pips'),
+                'partial_closed': False,
             }
             
             logger.info(f"HG placed: {hg_info['type'].upper()} {hg_lot} lots at {hg_info['price']:.2f}")
@@ -198,6 +281,9 @@ class HGManager:
                 logger.info(f"HG closed: {level_key}")
                 # เพิ่มลง closed_hg_levels เพื่อไม่ให้วางซ้ำ
                 self.closed_hg_levels.add(level_key)
+                zone_id = hg_data.get('zone_id')
+                if zone_id in self.active_zone_ids:
+                    self.active_zone_ids.discard(zone_id)
                 # ลบออกจาก placed_hg เพื่อไม่ให้ log ซ้ำอีก
                 del self.placed_hg[level_key]
                 continue
@@ -213,6 +299,13 @@ class HGManager:
             else:  # sell
                 pips_profit = config.price_to_pips(pos['open_price'] - pos['current_price'])
                 sl_trigger = config.hg.sell_hg_sl_trigger
+            
+            # Partial close สำหรับ zone-based HG
+            if hg_data.get('source') == 'zone' and not hg_data.get('partial_closed'):
+                trigger_pips = hg_data.get('partial_close_trigger_pips')
+                ratio = hg_data.get('partial_close_ratio') or (self.current_profile or {}).get('partial_close_ratio', 0.5)
+                if trigger_pips and pips_profit >= trigger_pips and ratio > 0:
+                    self._execute_partial_close(hg_data, pos, ratio)
             
             # ตรวจสอบว่าถึง trigger breakeven หรือยัง (ใช้ค่าแยก Buy/Sell)
             if pips_profit >= sl_trigger:
@@ -251,6 +344,23 @@ class HGManager:
             logger.info(f"HG Breakeven set: Ticket {hg_data['ticket']} | SL: {sl_price:.2f}")
             logger.info(f"Buffer: {buffer} pips ({hg_data['type'].upper()})")
     
+    def _execute_partial_close(self, hg_data: Dict, position: Dict, ratio: float):
+        """
+        ปิดบางส่วนของ HG position ตามอัตราส่วนที่กำหนด
+        """
+        try:
+            volume = position['volume'] * ratio
+            if volume <= 0:
+                return
+            success = mt5_connection.close_partial_order(hg_data['ticket'], volume)
+            if success:
+                hg_data['partial_closed'] = True
+                logger.info(f"Partial close executed for HG ticket {hg_data['ticket']} (ratio {ratio:.2f})")
+            else:
+                logger.warning(f"Partial close failed for HG ticket {hg_data['ticket']}")
+        except Exception as e:
+            logger.error(f"Error during partial close: {e}")
+    
     def manage_multiple_hg(self, current_price: float):
         """
         จัดการระบบ HG แบบหลายระดับ
@@ -264,8 +374,12 @@ class HGManager:
         # อัพเดท start_price ถ้าจำเป็น
         self.update_hg_start_price_if_needed(current_price)
         
-        # ตรวจสอบ HG triggers
-        triggers = self.check_hg_trigger(current_price)
+        # อัพเดท zone profile และตรวจสอบ zone triggers
+        self._refresh_zones_if_needed()
+        triggers = self._get_zone_triggers(current_price)
+        
+        # ตรวจสอบ HG triggers จากระยะคงที่ (fallback)
+        triggers.extend(self.check_hg_trigger(current_price))
         
         # วาง HG orders
         for trigger in triggers:

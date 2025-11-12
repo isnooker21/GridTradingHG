@@ -182,6 +182,37 @@ class MT5Connection:
             logger.error(f"Error getting price: {e}")
             return None
     
+    def get_recent_rates(self, count: int = 200, timeframe=mt5.TIMEFRAME_M15) -> List[Dict]:
+        """
+        ดึงข้อมูลแท่งเทียนล่าสุดจาก MT5
+        """
+        try:
+            if not self.connected:
+                logger.error("MT5 not connected - cannot fetch rates")
+                return []
+            
+            rates = mt5.copy_rates_from_pos(self.symbol, timeframe, 0, count)
+            if rates is None:
+                logger.error(f"Cannot fetch rates for {self.symbol}")
+                return []
+            
+            candles = []
+            for rate in rates:
+                candles.append({
+                    'time': int(rate['time']),
+                    'open': rate['open'],
+                    'high': rate['high'],
+                    'low': rate['low'],
+                    'close': rate['close'],
+                    'tick_volume': rate['tick_volume'],
+                    'real_volume': rate['real_volume'] if 'real_volume' in rate.dtype.names else rate['tick_volume'],
+                    'spread': rate['spread']
+                })
+            return candles
+        except Exception as e:
+            logger.error(f"Error fetching recent rates: {e}")
+            return []
+    
     def _get_filling_mode(self, symbol_info) -> int:
         """
         กำหนด type_filling ตาม symbol properties และ broker
@@ -430,6 +461,69 @@ class MT5Connection:
         except Exception as e:
             logger.error(f"Error closing order: {e}")
             return False
+    
+    def close_partial_order(self, ticket: int, volume: float) -> bool:
+        """
+        ปิด position บางส่วน
+        """
+        with self.order_lock:
+            try:
+                positions = mt5.positions_get(ticket=ticket)
+                if not positions:
+                    logger.error(f"Position {ticket} not found for partial close")
+                    return False
+                
+                position = positions[0]
+                symbol_info = mt5.symbol_info(self.symbol)
+                if symbol_info is None:
+                    logger.error(f"Symbol info for {self.symbol} not available")
+                    return False
+                
+                volume_step = symbol_info.volume_step if symbol_info.volume_step > 0 else 0.01
+                min_volume = symbol_info.volume_min if symbol_info.volume_min > 0 else volume_step
+                
+                volume = round(volume / volume_step) * volume_step
+                if volume < min_volume:
+                    volume = min_volume
+                
+                if volume >= position.volume:
+                    logger.debug("Requested partial volume >= current volume; closing entire position instead")
+                    return self.close_order(ticket)
+                
+                trade_type = mt5.ORDER_TYPE_SELL if position.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+                tick = mt5.symbol_info_tick(self.symbol)
+                if tick is None:
+                    logger.error(f"Cannot get tick data for {self.symbol}")
+                    return False
+                
+                price = tick.bid if trade_type == mt5.ORDER_TYPE_SELL else tick.ask
+                type_filling = self._get_filling_mode(symbol_info)
+                
+                request = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": self.symbol,
+                    "volume": volume,
+                    "type": trade_type,
+                    "position": ticket,
+                    "price": price,
+                    "deviation": self.deviation,
+                    "magic": self.magic_number,
+                    "comment": f"Partial close {position.comment}",
+                    "type_time": mt5.ORDER_TIME_GTC,
+                    "type_filling": type_filling,
+                }
+                
+                result = mt5.order_send(request)
+                if result.retcode != mt5.TRADE_RETCODE_DONE:
+                    logger.error(f"Partial close failed: {result.retcode} - {result.comment}")
+                    return False
+                
+                logger.info(f"Partial close executed: ticket {ticket}, volume {volume}")
+                return True
+            
+            except Exception as e:
+                logger.error(f"Error partial closing order: {e}")
+                return False
     
     def get_all_positions(self) -> List[Dict]:
         """
