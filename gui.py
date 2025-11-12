@@ -384,12 +384,10 @@ class TradingGUI:
         
         # ====== Shared option definitions ======
         self.resilience_distance_options = [
+            ("500 pips", 500),
             ("1,000 pips", 1000),
+            ("2,000 pips", 2000),
             ("3,000 pips", 3000),
-            ("5,000 pips", 5000),
-            ("7,000 pips", 7000),
-            ("10,000 pips", 10000),
-            ("15,000 pips", 15000),
             ("Custom", None),
         ]
         self.resilience_buffer_options = [
@@ -815,6 +813,16 @@ class TradingGUI:
         self.auto_plan_hg_sl_var.set(f"{hg_sl} pips")
         self.auto_plan_lot_size_var.set(f"{plan.get('lot_size', config.grid.buy_lot_size):.2f} lots")
         self.auto_plan_pip_value_var.set(f"${plan.get('pip_value_per_lot', 10.0):.2f} per lot")
+        
+        # อัพเดท TP ให้ตรงกับระยะกริดที่คำนวณ
+        tp_updates = {}
+        if settings.get("buy_grid_distance"):
+            tp_updates["buy_take_profit"] = settings["buy_grid_distance"]
+        if settings.get("sell_grid_distance"):
+            tp_updates["sell_take_profit"] = settings["sell_grid_distance"]
+        if tp_updates:
+            config.update_grid_settings(**tp_updates)
+            config.save_to_file()
         
         est_drawdown = plan.get("estimated_drawdown")
         tgt_drawdown = plan.get("target_drawdown")
