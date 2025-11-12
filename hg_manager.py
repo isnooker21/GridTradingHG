@@ -28,6 +28,8 @@ class HGManager:
         self.last_zone_refresh = 0.0
         self.current_profile: Optional[Dict] = None
         self.active_zone_ids = set()
+        self.last_hg_entry_price = {'buy': None, 'sell': None}
+        self.last_price: Optional[float] = None
     
     def _get_active_profile(self) -> Dict:
         plan = getattr(config.grid, "auto_plan", {}) or {}
@@ -83,22 +85,43 @@ class HGManager:
             return triggers
         
         allowed = []
-        if config.hg.direction in ['buy', 'both']:
-            allowed.append('buy')
-        if config.hg.direction in ['sell', 'both']:
-            allowed.append('sell')
+        direction_setting = config.grid.direction if config.grid.auto_mode else config.hg.direction
+        zone_map: Dict[str, str] = {}
+        if direction_setting == 'buy':
+            zone_map['sell'] = 'sell'
+        elif direction_setting == 'sell':
+            zone_map['buy'] = 'buy'
+        elif direction_setting == 'both':
+            zone_map = {'buy': 'buy', 'sell': 'sell'}
         
-        for zone_type in allowed:
+        prev_price = self.last_price
+        for zone_type, hg_type in zone_map.items():
             for zone in self.zone_cache.get(zone_type, []):
                 if zone['id'] in self.active_zone_ids:
                     continue
-                if zone['lower'] <= current_price <= zone['upper']:
-                    trigger = self._build_zone_trigger(zone, zone_type, current_price)
-                    triggers.append(trigger)
-                    self.active_zone_ids.add(zone['id'])
+                
+                in_zone = zone['lower'] <= current_price <= zone['upper']
+                if not in_zone:
+                    continue
+                
+                if prev_price is not None:
+                    if zone_type == 'buy' and not (prev_price >= zone['upper']):
+                        continue
+                    if zone_type == 'sell' and not (prev_price <= zone['lower']):
+                        continue
+                
+                last_price = self.last_hg_entry_price.get(hg_type)
+                min_spacing_pips = max(5.0, (zone.get('width_pips') or 0) * 0.5)
+                if last_price is not None:
+                    if abs(current_price - last_price) < config.pips_to_price(min_spacing_pips):
+                        continue
+                
+                trigger = self._build_zone_trigger(zone, hg_type, current_price)
+                triggers.append(trigger)
+                self.active_zone_ids.add(zone['id'])
         return triggers
         
-    def check_hg_trigger(self, current_price: float) -> List[Dict]:
+    def check_hg_trigger(self, current_price: float, direction_mode: Optional[str] = None) -> List[Dict]:
         """
         ตรวจสอบว่าถึงเงื่อนไขวาง HG หรือยัง
         
@@ -114,8 +137,10 @@ class HGManager:
         buy_hg_distance_price = config.pips_to_price(config.hg.buy_hg_distance)
         sell_hg_distance_price = config.pips_to_price(config.hg.sell_hg_distance)
         
-        # HG Buy (ด้านล่าง) - เฉพาะเมื่อเปิดใช้งานและเลือก buy/both
-        if config.hg.direction in ['buy', 'both']:
+        direction_setting = direction_mode or config.hg.direction
+        
+        # HG Buy (ด้านล่าง)
+        if direction_setting in ['buy', 'both']:
             for i in range(1, config.hg.buy_max_hg_levels + 1):
                 level_price_buy = self.start_price - (buy_hg_distance_price * i)
                 level_key_buy = f"HG_BUY_{i}"
@@ -131,8 +156,8 @@ class HGManager:
                         'level': -i
                     })
         
-        # HG Sell (ด้านบน) - เฉพาะเมื่อเปิดใช้งานและเลือก sell/both
-        if config.hg.direction in ['sell', 'both']:
+        # HG Sell (ด้านบน)
+        if direction_setting in ['sell', 'both']:
             for i in range(1, config.hg.sell_max_hg_levels + 1):
                 level_price_sell = self.start_price + (sell_hg_distance_price * i)
                 level_key_sell = f"HG_SELL_{i}"
@@ -253,6 +278,7 @@ class HGManager:
                 'partial_close_trigger_pips': hg_info.get('partial_close_trigger_pips'),
                 'partial_closed': False,
             }
+            self.last_hg_entry_price[hg_info['type']] = hg_info['price']
             
             logger.info(f"HG placed: {hg_info['type'].upper()} {hg_lot} lots at {hg_info['price']:.2f}")
             logger.info(f"Level: {hg_info['level_key']}")
@@ -356,10 +382,26 @@ class HGManager:
             if success:
                 hg_data['partial_closed'] = True
                 logger.info(f"Partial close executed for HG ticket {hg_data['ticket']} (ratio {ratio:.2f})")
+                self._close_highest_loss_grid()
             else:
                 logger.warning(f"Partial close failed for HG ticket {hg_data['ticket']}")
         except Exception as e:
             logger.error(f"Error during partial close: {e}")
+    
+    def _close_highest_loss_grid(self):
+        """
+        ปิดไม้ Grid ที่ขาดทุนมากที่สุดหนึ่งไม้ (ช่วยลด DD เมื่อ HG ทำกำไร)
+        """
+        position_monitor.update_all_positions()
+        worst = None
+        for pos in position_monitor.grid_positions:
+            if worst is None or pos['profit'] < worst['profit']:
+                worst = pos
+        if worst and worst['profit'] < 0:
+            logger.info(f"Closing worst grid position ticket {worst['ticket']} profit {worst['profit']:.2f}")
+            mt5_connection.close_order(worst['ticket'])
+        else:
+            logger.debug("No grid position requires closing after partial HG profit.")
     
     def manage_multiple_hg(self, current_price: float):
         """
@@ -374,12 +416,22 @@ class HGManager:
         # อัพเดท start_price ถ้าจำเป็น
         self.update_hg_start_price_if_needed(current_price)
         
+        prev_price = self.last_price
+        self.last_price = current_price
+        
         # อัพเดท zone profile และตรวจสอบ zone triggers
         self._refresh_zones_if_needed()
         triggers = self._get_zone_triggers(current_price)
         
-        # ตรวจสอบ HG triggers จากระยะคงที่ (fallback)
-        triggers.extend(self.check_hg_trigger(current_price))
+        # ตรวจสอบ HG triggers จากระยะคงที่ (fallback) วิเคราะห์ทิศตรงข้าม
+        direction_setting = config.grid.direction if config.grid.auto_mode else config.hg.direction
+        if direction_setting == 'buy':
+            fallback_direction = 'sell'
+        elif direction_setting == 'sell':
+            fallback_direction = 'buy'
+        else:
+            fallback_direction = 'both'
+        triggers.extend(self.check_hg_trigger(current_price, fallback_direction))
         
         # วาง HG orders
         for trigger in triggers:
