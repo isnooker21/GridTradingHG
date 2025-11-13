@@ -400,6 +400,8 @@ class HGManager:
             volume = position['volume'] * ratio
             if volume <= 0:
                 return
+            volume_step = 0.01
+            volume = max(volume_step, round(volume / volume_step) * volume_step)
             success = mt5_connection.close_partial_order(hg_data['ticket'], volume)
             if success:
                 hg_data['partial_closed'] = True
