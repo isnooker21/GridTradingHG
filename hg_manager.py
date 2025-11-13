@@ -203,7 +203,7 @@ class HGManager:
             self.closed_hg_levels = set()
             logger.info("HG positions cleared - will place new HG levels")
     
-    def calculate_hg_lot(self, hg_type: str = 'buy') -> float:
+    def calculate_hg_lot(self, hg_type: str = 'buy', context: Optional[Dict] = None) -> float:
         """
         คำนวณ lot size สำหรับ HG (ใช้ multiplier และ initial lot แยก Buy/Sell)
         HG Lot = max(Grid Exposure × multiplier, Initial Lot)
@@ -214,6 +214,20 @@ class HGManager:
         Returns:
             lot size สำหรับ HG
         """
+        profile = self.current_profile or self._get_active_profile()
+        plan = getattr(config.grid, "auto_plan", {}) or {}
+        balance = float(plan.get('balance', 0.0) or 0.0)
+        lot_size = max(config.grid.buy_lot_size if hg_type == 'buy' else config.grid.sell_lot_size, 0.01)
+        margin_per_position = plan.get('margin_per_position')
+        margin_per_lot = None
+        if margin_per_position and lot_size > 0:
+            margin_per_lot = margin_per_position / lot_size
+        else:
+            margin_per_lot = plan.get('margin_per_position') or 0.0
+        balance_cap_lot = 0.0
+        if balance > 0 and margin_per_lot:
+            balance_cap_lot = (balance * profile['hg_lot_balance_pct']) / margin_per_lot
+        
         # ดึงข้อมูล Grid exposure
         exposure = position_monitor.get_net_grid_exposure()
         net_volume = exposure['net_volume']
@@ -226,11 +240,19 @@ class HGManager:
             multiplier = config.hg.sell_hg_multiplier
             initial_lot = config.hg.sell_hg_initial_lot
         
-        # คำนวณ HG lot
+        # คำนวณ HG lot จาก exposure
         hg_lot = net_volume * multiplier
+        
+        # ปรับตาม zone score (ถ้ามี)
+        if context and context.get('zone_score'):
+            score_weight = 1.0 + context['zone_score'] * profile['score_lot_weight']
+            hg_lot *= score_weight
         
         # ใช้ค่าที่มากกว่าระหว่าง calculated lot กับ initial lot
         hg_lot = max(hg_lot, initial_lot)
+        
+        if balance_cap_lot > 0:
+            hg_lot = min(hg_lot, balance_cap_lot)
         
         # ปัดเศษตาม step
         hg_lot = round(hg_lot, 2)
@@ -250,7 +272,7 @@ class HGManager:
             ticket number หรือ None
         """
         # คำนวณ lot size (แยก Buy/Sell)
-        hg_lot = self.calculate_hg_lot(hg_info['type'])
+        hg_lot = self.calculate_hg_lot(hg_info['type'], context=hg_info)
         
         # กำหนด comment สำหรับ HG (ใช้ comment_hg เสมอเพื่อให้แยกประเภทได้ชัดเจน)
         comment = config.mt5.comment_hg

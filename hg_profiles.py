@@ -20,6 +20,8 @@ class HGProfile:
     max_zone_age_bars: int
     fallback_distance_factor: float
     allow_reentry: bool = False
+    hg_lot_balance_pct: float = 0.003  # ส่วนของ balance ที่ใช้ต่อ HG
+    score_lot_weight: float = 0.5      # ตัวคูณ lot ตาม score
 
     def to_dict(self) -> Dict:
         return {
@@ -35,6 +37,8 @@ class HGProfile:
             "max_zone_age_bars": self.max_zone_age_bars,
             "fallback_distance_factor": self.fallback_distance_factor,
             "allow_reentry": self.allow_reentry,
+            "hg_lot_balance_pct": self.hg_lot_balance_pct,
+            "score_lot_weight": self.score_lot_weight,
         }
 
 
@@ -52,6 +56,8 @@ HG_PROFILES = [
         lookback_bars=180,
         max_zone_age_bars=80,
         fallback_distance_factor=2.5,
+        hg_lot_balance_pct=0.0025,
+        score_lot_weight=0.6,
     ),
     HGProfile(
         id="balanced",
@@ -67,6 +73,8 @@ HG_PROFILES = [
         max_zone_age_bars=120,
         fallback_distance_factor=3.0,
         allow_reentry=True,
+        hg_lot_balance_pct=0.0035,
+        score_lot_weight=0.7,
     ),
     HGProfile(
         id="wide",
@@ -82,6 +90,8 @@ HG_PROFILES = [
         max_zone_age_bars=160,
         fallback_distance_factor=3.5,
         allow_reentry=True,
+        hg_lot_balance_pct=0.0045,
+        score_lot_weight=0.8,
     ),
 ]
 

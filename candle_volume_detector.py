@@ -27,13 +27,23 @@ class CandleVolumeDetector:
     
     def __init__(self):
         self.symbol = config.mt5.symbol
-        self.timeframe = mt5.TIMEFRAME_M15  # ใช้ M15
+        self.primary_timeframe = mt5.TIMEFRAME_M15  # default
         self.volume_ma_period = 20  # Volume MA 20 แท่ง
         self.cached_result = None
         self.cached_time = None
         self.cache_duration = 60  # cache 60 วินาที
+        self.timeframe_config = [
+            {'tf': mt5.TIMEFRAME_M5, 'label': 'M5', 'weight': 0.2},
+            {'tf': mt5.TIMEFRAME_M15, 'label': 'M15', 'weight': 0.5},
+            {'tf': mt5.TIMEFRAME_H1, 'label': 'H1', 'weight': 0.3},
+        ]
+        self.confidence_weight = {
+            'HIGH': 1.0,
+            'MODERATE': 0.6,
+            'LOW': 0.3
+        }
     
-    def get_closed_candle(self, position: int = 1) -> Optional[object]:
+    def get_closed_candle(self, position: int = 1, timeframe: Optional[int] = None) -> Optional[object]:
         """
         ดึงแท่งเทียนที่ปิดแล้ว
         
@@ -45,12 +55,8 @@ class CandleVolumeDetector:
         """
         try:
             # position = 1 คือแท่งที่ปิดแล้ว (index 0 คือแท่งปัจจุบันที่กำลังวิ่ง)
-            rates = mt5.copy_rates_from_pos(
-                self.symbol, 
-                self.timeframe, 
-                position,
-                1
-            )
+            tf = timeframe or self.primary_timeframe
+            rates = mt5.copy_rates_from_pos(self.symbol, tf, position, 1)
             
             if rates is None or len(rates) == 0:
                 logger.error(f"Cannot get closed candle at position {position}")
@@ -62,7 +68,7 @@ class CandleVolumeDetector:
             logger.error(f"Error getting closed candle: {e}")
             return None
     
-    def get_last_n_candles(self, n: int = 20) -> Optional[List]:
+    def get_last_n_candles(self, n: int = 20, timeframe: Optional[int] = None) -> Optional[List]:
         """
         ดึง N แท่งล่าสุดที่ปิดแล้ว
         
@@ -73,12 +79,8 @@ class CandleVolumeDetector:
             List of candles หรือ None
         """
         try:
-            rates = mt5.copy_rates_from_pos(
-                self.symbol,
-                self.timeframe,
-                1,  # เริ่มจากแท่งที่ปิดแล้ว
-                n
-            )
+            tf = timeframe or self.primary_timeframe
+            rates = mt5.copy_rates_from_pos(self.symbol, tf, 1, n)
             
             if rates is None or len(rates) == 0:
                 logger.error(f"Cannot get last {n} candles")
@@ -90,7 +92,7 @@ class CandleVolumeDetector:
             logger.error(f"Error getting candles: {e}")
             return None
     
-    def calculate_volume_ma(self, period: int = 20) -> float:
+    def calculate_volume_ma(self, period: int = 20, timeframe: Optional[int] = None) -> float:
         """
         คำนวณ Volume MA
         
@@ -101,7 +103,7 @@ class CandleVolumeDetector:
             Volume MA หรือ 0
         """
         try:
-            candles = self.get_last_n_candles(period)
+            candles = self.get_last_n_candles(period, timeframe=timeframe)
             
             if candles is None or len(candles) < period:
                 logger.warning(f"Not enough candles for Volume MA calculation")
@@ -182,7 +184,7 @@ class CandleVolumeDetector:
                 'body_ratio': 0
             }
     
-    def analyze_volume(self, candle: object) -> Dict:
+    def analyze_volume(self, candle: object, timeframe: Optional[int] = None) -> Dict:
         """
         วิเคราะห์ Volume
         
@@ -196,7 +198,7 @@ class CandleVolumeDetector:
         """
         try:
             current_volume = candle['tick_volume']
-            volume_ma = self.calculate_volume_ma(self.volume_ma_period)
+            volume_ma = self.calculate_volume_ma(self.volume_ma_period, timeframe=timeframe)
             
             if volume_ma == 0:
                 return {
@@ -337,35 +339,70 @@ class CandleVolumeDetector:
                 logger.debug("Using cached result")
                 return self.cached_result
             
-            # ดึงแท่งล่าสุดที่ปิดแล้ว
-            last_candle = self.get_closed_candle(position=1)
+            aggregated_scores = {'buy': 0.0, 'sell': 0.0}
+            tf_details = []
             
-            if last_candle is None:
-                logger.error("Cannot get last closed candle")
+            for tf_conf in self.timeframe_config:
+                detail = self._analyze_timeframe(tf_conf['tf'])
+                if not detail:
+                    continue
+                tf_details.append(detail)
+                direction = detail['decision']['direction']
+                confidence = detail['decision']['confidence']
+                weight = tf_conf['weight']
+                conf_weight = self.confidence_weight.get(confidence, 0.3)
+                score_contribution = weight * conf_weight
+                if direction == 'buy':
+                    aggregated_scores['buy'] += score_contribution
+                elif direction == 'sell':
+                    aggregated_scores['sell'] += score_contribution
+                else:
+                    aggregated_scores['buy'] += score_contribution * 0.5
+                    aggregated_scores['sell'] += score_contribution * 0.5
+            
+            if not tf_details:
+                logger.error("No timeframe data for direction analysis")
                 return None
             
-            # วิเคราะห์แท่งเทียน
-            candle_info = self.analyze_candle(last_candle)
+            buy_score = aggregated_scores['buy']
+            sell_score = aggregated_scores['sell']
+            score_diff = abs(buy_score - sell_score)
             
-            # วิเคราะห์ Volume
-            volume_info = self.analyze_volume(last_candle)
+            if buy_score - sell_score > 0.15:
+                direction = 'buy'
+            elif sell_score - buy_score > 0.15:
+                direction = 'sell'
+            else:
+                direction = 'both'
             
-            # ตัดสินใจทิศทาง
-            decision = self.decide_direction(candle_info, volume_info)
+            if score_diff >= 0.4:
+                confidence = 'HIGH'
+            elif score_diff >= 0.2:
+                confidence = 'MODERATE'
+            else:
+                confidence = 'LOW'
             
-            # รวมข้อมูล
+            reason_chunks = [
+                f"{d['label']} {d['decision']['direction'].upper()} ({d['decision']['confidence']}): {d['decision']['reason']}"
+                for d in tf_details
+            ]
+            reason_text = " | ".join(reason_chunks)
+            
+            primary_detail = next((d for d in tf_details if d['timeframe'] == mt5.TIMEFRAME_M15), tf_details[0])
             result = {
-                'direction': decision['direction'],
-                'confidence': decision['confidence'],
-                'reason': decision['reason'],
-                'candle_type': candle_info['type'],
-                'candle_strength': candle_info['strength'],
-                'candle_pips': candle_info['body_pips'],
-                'candle_range_pips': candle_info['range_pips'],
-                'volume_level': volume_info['level'],
-                'volume_ratio': volume_info['ratio'],
-                'volume_current': volume_info['current'],
-                'volume_ma': volume_info['ma'],
+                'direction': direction,
+                'confidence': confidence,
+                'reason': reason_text,
+                'scores': {'buy': buy_score, 'sell': sell_score},
+                'timeframes': tf_details,
+                'candle_type': primary_detail['candle']['type'],
+                'candle_strength': primary_detail['candle']['strength'],
+                'candle_pips': primary_detail['candle']['body_pips'],
+                'candle_range_pips': primary_detail['candle']['range_pips'],
+                'volume_level': primary_detail['volume']['level'],
+                'volume_ratio': primary_detail['volume']['ratio'],
+                'volume_current': primary_detail['volume']['current'],
+                'volume_ma': primary_detail['volume']['ma'],
                 'timestamp': datetime.now()
             }
             
@@ -387,6 +424,22 @@ class CandleVolumeDetector:
         self.cached_result = None
         self.cached_time = None
         logger.info("Candle/Volume cache cleared")
+
+    def _analyze_timeframe(self, timeframe: int) -> Optional[Dict]:
+        last_candle = self.get_closed_candle(position=1, timeframe=timeframe)
+        if last_candle is None:
+            return None
+        candle_info = self.analyze_candle(last_candle)
+        volume_info = self.analyze_volume(last_candle, timeframe=timeframe)
+        decision = self.decide_direction(candle_info, volume_info)
+        label = next((cfg['label'] for cfg in self.timeframe_config if cfg['tf'] == timeframe), str(timeframe))
+        return {
+            'label': label,
+            'timeframe': timeframe,
+            'candle': candle_info,
+            'volume': volume_info,
+            'decision': decision
+        }
 
 
 # สร้าง singleton instance
