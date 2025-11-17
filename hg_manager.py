@@ -343,10 +343,20 @@ class HGManager:
             # คำนวณกำไรเป็น pips
             if hg_data['type'] == 'buy':
                 pips_profit = config.price_to_pips(pos['current_price'] - pos['open_price'])
-                sl_trigger = config.hg.buy_hg_sl_trigger
+                # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
+                if config.grid.auto_mode:
+                    plan = getattr(config.grid, "auto_plan", {}) or {}
+                    sl_trigger = plan.get("buy_hg_sl_trigger") or config.hg.buy_hg_sl_trigger
+                else:
+                    sl_trigger = config.hg.buy_hg_sl_trigger
             else:  # sell
                 pips_profit = config.price_to_pips(pos['open_price'] - pos['current_price'])
-                sl_trigger = config.hg.sell_hg_sl_trigger
+                # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
+                if config.grid.auto_mode:
+                    plan = getattr(config.grid, "auto_plan", {}) or {}
+                    sl_trigger = plan.get("sell_hg_sl_trigger") or config.hg.sell_hg_sl_trigger
+                else:
+                    sl_trigger = config.hg.sell_hg_sl_trigger
             
             # Partial close สำหรับ zone-based HG
             if hg_data.get('source') == 'zone' and not hg_data.get('partial_closed'):
@@ -382,15 +392,25 @@ class HGManager:
             sl_price = position['open_price'] - buffer_price
         
         # ตั้ง SL
-        success = mt5_connection.modify_order(
-            ticket=hg_data['ticket'],
-            sl=sl_price
-        )
-        
-        if success:
-            hg_data['breakeven_set'] = True
-            logger.info(f"HG Breakeven set: Ticket {hg_data['ticket']} | SL: {sl_price:.2f}")
-            logger.info(f"Buffer: {buffer} pips ({hg_data['type'].upper()})")
+        try:
+            success = mt5_connection.modify_order(
+                ticket=hg_data['ticket'],
+                sl=sl_price
+            )
+            
+            if success:
+                # ตรวจสอบว่า SL ถูกตั้งจริงหรือไม่ (อัพเดท position ใหม่)
+                position_monitor.update_all_positions()
+                updated_pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
+                if updated_pos and updated_pos.get('sl'):
+                    hg_data['breakeven_set'] = True
+                    logger.info(f"✓ HG Breakeven set: Ticket {hg_data['ticket']} | SL: {sl_price:.2f} | Buffer: {buffer} pips ({hg_data['type'].upper()})")
+                else:
+                    logger.warning(f"⚠ HG Breakeven SL not confirmed: Ticket {hg_data['ticket']} | SL may not be set")
+            else:
+                logger.error(f"✗ Failed to set HG Breakeven SL: Ticket {hg_data['ticket']} | SL: {sl_price:.2f} | Buffer: {buffer} pips ({hg_data['type'].upper()})")
+        except Exception as e:
+            logger.error(f"✗ Error setting HG Breakeven SL for ticket {hg_data['ticket']}: {e}", exc_info=True)
     
     def _execute_partial_close(self, hg_data: Dict, position: Dict, ratio: float):
         """
@@ -475,11 +495,18 @@ class HGManager:
         self.start_price = start_price
         self.placed_hg = {}
         self.closed_hg_levels = set()
+        self.last_hg_entry_price = {'buy': None, 'sell': None}
+        
+        restored = self.restore_existing_hg_positions()
         
         logger.info(f"HG System started at price: {start_price:.2f}")
         logger.info(f"HG Direction: {config.hg.direction}")
         logger.info(f"Buy HG Distance: {config.hg.buy_hg_distance} pips")
         logger.info(f"Sell HG Distance: {config.hg.sell_hg_distance} pips")
+        if restored:
+            logger.info(f"✓ Restored {restored} HG positions from MT5")
+        else:
+            logger.info("No existing HG positions found - will start fresh")
     
     def stop_hg_system(self):
         """
@@ -487,6 +514,52 @@ class HGManager:
         """
         self.active = False
         logger.info("HG System stopped")
+    
+    def restore_existing_hg_positions(self) -> int:
+        """
+        ตรวจจับ HG positions ที่เปิดอยู่ใน MT5 เพื่อให้ระบบสามารถทำงานต่อเนื่องหลังรีสตาร์ท
+        
+        Returns:
+            จำนวน HG positions ที่กู้คืนได้
+        """
+        try:
+            position_monitor.update_all_positions()
+            profile = self.current_profile or self._get_active_profile()
+            restored = 0
+            
+            for pos in position_monitor.hg_positions:
+                ticket = pos['ticket']
+                level_key = f"HG_RESTORE_{ticket}"
+                
+                # ตรวจสอบว่าเราเคยเก็บไว้แล้วหรือยัง
+                if level_key in self.placed_hg:
+                    continue
+                
+                entry_type = pos['type']
+                has_sl = pos.get('sl') not in (None, 0.0)
+                
+                self.placed_hg[level_key] = {
+                    'ticket': ticket,
+                    'open_price': pos['open_price'],
+                    'type': entry_type,
+                    'lot': pos['volume'],
+                    'breakeven_set': has_sl,
+                    'level': None,
+                    'source': 'restored',
+                    'zone_id': None,
+                    'zone_width_pips': None,
+                    'partial_close_ratio': profile.get('partial_close_ratio'),
+                    'partial_close_trigger_pips': None,
+                    'partial_closed': False,
+                }
+                
+                self.last_hg_entry_price[entry_type] = pos['open_price']
+                restored += 1
+            
+            return restored
+        except Exception as e:
+            logger.error(f"Error restoring HG positions: {e}", exc_info=True)
+            return 0
     
     def get_hg_status(self) -> Dict:
         """

@@ -855,7 +855,11 @@ class TradingGUI:
         
         # อัพเดท config.last_auto_update เพื่อให้ grid_manager ใช้ค่าใหม่ทันที
         config.grid.last_auto_update = datetime.now()
-        config.grid.auto_plan = plan
+        # เก็บ sl_trigger ไว้ใน auto_plan เพื่อให้ hg_manager ใช้ได้
+        plan_with_sl = plan.copy()
+        plan_with_sl['buy_hg_sl_trigger'] = settings.get('buy_hg_sl_trigger', config.hg.buy_hg_sl_trigger)
+        plan_with_sl['sell_hg_sl_trigger'] = settings.get('sell_hg_sl_trigger', config.hg.sell_hg_sl_trigger)
+        config.grid.auto_plan = plan_with_sl
 
     def _load_resilience_settings_to_ui(self):
         """โหลดค่าจาก config มาใส่ UI Auto Mode"""
