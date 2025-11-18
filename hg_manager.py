@@ -315,59 +315,75 @@ class HGManager:
         if not self.active or not config.hg.enabled:
             return
         
-        # อัพเดท positions
-        position_monitor.update_all_positions()
+        try:
+            # อัพเดท positions
+            position_monitor.update_all_positions()
+        except Exception as e:
+            logger.error(f"Error updating positions in monitor_hg_profit: {e}")
+            return
         
         # ใช้ list() เพื่อสร้าง copy ของ keys เพื่อป้องกันปัญหาเมื่อลบ element ขณะ iterate
         for level_key in list(self.placed_hg.keys()):
-            hg_data = self.placed_hg[level_key]
-            # ตรวจสอบว่า position ยังเปิดอยู่หรือไม่
-            pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
-            
-            if pos is None:
-                # Position ถูกปิดแล้ว (SL/TP)
-                logger.info(f"HG closed: {level_key}")
-                # เพิ่มลง closed_hg_levels เพื่อไม่ให้วางซ้ำ
-                self.closed_hg_levels.add(level_key)
-                zone_id = hg_data.get('zone_id')
-                if zone_id in self.active_zone_ids:
-                    self.active_zone_ids.discard(zone_id)
-                # ลบออกจาก placed_hg เพื่อไม่ให้ log ซ้ำอีก
-                del self.placed_hg[level_key]
+            try:
+                hg_data = self.placed_hg[level_key]
+                # ตรวจสอบว่า position ยังเปิดอยู่หรือไม่
+                pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
+                
+                if pos is None:
+                    # Position ถูกปิดแล้ว (SL/TP)
+                    logger.info(f"HG closed: {level_key}")
+                    # เพิ่มลง closed_hg_levels เพื่อไม่ให้วางซ้ำ
+                    self.closed_hg_levels.add(level_key)
+                    zone_id = hg_data.get('zone_id')
+                    if zone_id in self.active_zone_ids:
+                        self.active_zone_ids.discard(zone_id)
+                    # ลบออกจาก placed_hg เพื่อไม่ให้ log ซ้ำอีก
+                    del self.placed_hg[level_key]
+                    continue
+                
+                # ตรวจสอบว่าตั้ง breakeven แล้วหรือยัง
+                # แต่ถ้า SL ยังไม่ได้ถูกตั้งจริงใน MT5 ให้ตั้งใหม่
+                if hg_data.get('breakeven_set'):
+                    # ตรวจสอบว่า SL ถูกตั้งจริงหรือไม่ (อัพเดท position ใหม่)
+                    if not pos.get('sl') or pos.get('sl') == 0.0:
+                        # SL ไม่ได้ถูกตั้งจริง แม้ว่า flag จะบอกว่า set แล้ว
+                        hg_data['breakeven_set'] = False
+                    else:
+                        # SL ถูกตั้งแล้ว ข้ามไป
+                        continue
+                
+                # คำนวณกำไรเป็น pips
+                if hg_data['type'] == 'buy':
+                    pips_profit = config.price_to_pips(pos['current_price'] - pos['open_price'])
+                    # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
+                    if config.grid.auto_mode:
+                        plan = getattr(config.grid, "auto_plan", {}) or {}
+                        sl_trigger = plan.get("buy_hg_sl_trigger") or config.hg.buy_hg_sl_trigger
+                    else:
+                        sl_trigger = config.hg.buy_hg_sl_trigger
+                else:  # sell
+                    pips_profit = config.price_to_pips(pos['open_price'] - pos['current_price'])
+                    # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
+                    if config.grid.auto_mode:
+                        plan = getattr(config.grid, "auto_plan", {}) or {}
+                        sl_trigger = plan.get("sell_hg_sl_trigger") or config.hg.sell_hg_sl_trigger
+                    else:
+                        sl_trigger = config.hg.sell_hg_sl_trigger
+                
+                # Partial close สำหรับ zone-based HG
+                if hg_data.get('source') == 'zone' and not hg_data.get('partial_closed'):
+                    trigger_pips = hg_data.get('partial_close_trigger_pips')
+                    ratio = hg_data.get('partial_close_ratio') or (self.current_profile or {}).get('partial_close_ratio', 0.5)
+                    if trigger_pips and pips_profit >= trigger_pips and ratio > 0:
+                        self._execute_partial_close(hg_data, pos, ratio)
+                
+                # ตรวจสอบว่าถึง trigger breakeven หรือยัง (ใช้ค่าแยก Buy/Sell)
+                if pips_profit >= sl_trigger:
+                    self.set_hg_breakeven_sl(hg_data, pos)
+            except Exception as e:
+                logger.error(f"Error monitoring HG profit for {level_key}: {e}", exc_info=True)
+                # ทำงานต่อกับ HG ตัวถัดไป แม้ว่าตัวนี้จะมี error
                 continue
-            
-            # ตรวจสอบว่าตั้ง breakeven แล้วหรือยัง
-            if hg_data['breakeven_set']:
-                continue
-            
-            # คำนวณกำไรเป็น pips
-            if hg_data['type'] == 'buy':
-                pips_profit = config.price_to_pips(pos['current_price'] - pos['open_price'])
-                # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
-                if config.grid.auto_mode:
-                    plan = getattr(config.grid, "auto_plan", {}) or {}
-                    sl_trigger = plan.get("buy_hg_sl_trigger") or config.hg.buy_hg_sl_trigger
-                else:
-                    sl_trigger = config.hg.buy_hg_sl_trigger
-            else:  # sell
-                pips_profit = config.price_to_pips(pos['open_price'] - pos['current_price'])
-                # ใน Auto Mode ให้ใช้ sl_trigger จาก auto plan (ถ้ามี) ไม่งั้นใช้จาก config
-                if config.grid.auto_mode:
-                    plan = getattr(config.grid, "auto_plan", {}) or {}
-                    sl_trigger = plan.get("sell_hg_sl_trigger") or config.hg.sell_hg_sl_trigger
-                else:
-                    sl_trigger = config.hg.sell_hg_sl_trigger
-            
-            # Partial close สำหรับ zone-based HG
-            if hg_data.get('source') == 'zone' and not hg_data.get('partial_closed'):
-                trigger_pips = hg_data.get('partial_close_trigger_pips')
-                ratio = hg_data.get('partial_close_ratio') or (self.current_profile or {}).get('partial_close_ratio', 0.5)
-                if trigger_pips and pips_profit >= trigger_pips and ratio > 0:
-                    self._execute_partial_close(hg_data, pos, ratio)
-            
-            # ตรวจสอบว่าถึง trigger breakeven หรือยัง (ใช้ค่าแยก Buy/Sell)
-            if pips_profit >= sl_trigger:
-                self.set_hg_breakeven_sl(hg_data, pos)
     
     def set_hg_breakeven_sl(self, hg_data: Dict, position: Dict):
         """
@@ -404,13 +420,12 @@ class HGManager:
                 updated_pos = position_monitor.get_position_by_ticket(hg_data['ticket'])
                 if updated_pos and updated_pos.get('sl'):
                     hg_data['breakeven_set'] = True
-                    logger.info(f"✓ HG Breakeven set: Ticket {hg_data['ticket']} | SL: {sl_price:.2f} | Buffer: {buffer} pips ({hg_data['type'].upper()})")
                 else:
-                    logger.warning(f"⚠ HG Breakeven SL not confirmed: Ticket {hg_data['ticket']} | SL may not be set")
+                    logger.warning(f"HG Breakeven SL not confirmed: Ticket {hg_data['ticket']}")
             else:
-                logger.error(f"✗ Failed to set HG Breakeven SL: Ticket {hg_data['ticket']} | SL: {sl_price:.2f} | Buffer: {buffer} pips ({hg_data['type'].upper()})")
+                logger.error(f"Failed to set HG Breakeven SL: Ticket {hg_data['ticket']}")
         except Exception as e:
-            logger.error(f"✗ Error setting HG Breakeven SL for ticket {hg_data['ticket']}: {e}", exc_info=True)
+            logger.error(f"Error setting HG Breakeven SL for ticket {hg_data['ticket']}: {e}", exc_info=True)
     
     def _execute_partial_close(self, hg_data: Dict, position: Dict, ratio: float):
         """
