@@ -306,55 +306,13 @@ class TradingGUI:
         self.sell_max_hg_levels_var = tk.IntVar(value=10)
         ttk.Entry(self.hg_frame, textvariable=self.sell_max_hg_levels_var, width=10).grid(row=8, column=2, pady=1, padx=1)
         
-        # ============ Status Display (ลด padding ให้กระชับ) ============
-        status_display_frame = ttk.LabelFrame(main_frame, text="📈 Status Display", padding="5")
-        status_display_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=1)  # ไม่ขยาย
+        # ============ Log Display (ใช้พื้นที่ที่เหลือ) ============
+        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="8")
+        log_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(4, 0))
         
-        # สร้าง grid สำหรับแสดงข้อมูล
-        info_frame = ttk.Frame(status_display_frame)
-        info_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Column 1
-        col1 = ttk.Frame(info_frame)
-        col1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        
-        ttk.Label(col1, text="Active Grid Levels:", font=("Arial", 9, "bold")).pack(anchor=tk.W)
-        self.grid_levels_var = tk.StringVar(value="0 levels")
-        ttk.Label(col1, textvariable=self.grid_levels_var, foreground="blue").pack(anchor=tk.W)
-        
-        ttk.Label(col1, text="Active HG Positions:", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(10, 0))
-        self.hg_positions_var = tk.StringVar(value="0 positions")
-        ttk.Label(col1, textvariable=self.hg_positions_var, foreground="green").pack(anchor=tk.W)
-        
-        ttk.Label(col1, text="Grid Exposure:", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(10, 0))
-        self.grid_exposure_var = tk.StringVar(value="0.00 lots")
-        ttk.Label(col1, textvariable=self.grid_exposure_var).pack(anchor=tk.W)
-        
-        # Column 2
-        col2 = ttk.Frame(info_frame)
-        col2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        
-        ttk.Label(col2, text="Total P&L:", font=("Arial", 9, "bold")).pack(anchor=tk.W)
-        self.total_pnl_var = tk.StringVar(value="$0.00")
-        self.pnl_label = ttk.Label(col2, textvariable=self.total_pnl_var, 
-                                   font=("Arial", 11, "bold"), foreground="black")
-        self.pnl_label.pack(anchor=tk.W)
-        
-        ttk.Label(col2, text="Margin Used:", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(10, 0))
-        self.margin_var = tk.StringVar(value="0%")
-        ttk.Label(col2, textvariable=self.margin_var, foreground="orange").pack(anchor=tk.W)
-        
-        ttk.Label(col2, text="Current Price:", font=("Arial", 9, "bold")).pack(anchor=tk.W, pady=(10, 0))
-        self.price_var = tk.StringVar(value="0.00")
-        ttk.Label(col2, textvariable=self.price_var).pack(anchor=tk.W)
-        
-        # ============ Log Display (ลด padding ให้กระชับ - ใช้พื้นที่ที่เหลือ) ============
-        log_frame = ttk.LabelFrame(main_frame, text="📝 Activity Log", padding="3")
-        log_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=1)
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=6, width=80,  # ลด height
-                                                  wrap=tk.WORD, font=("Consolas", 8))
-        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, width=80,
+                                                  wrap=tk.WORD, font=("Consolas", 9))
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         
         # ตั้งค่า grid weights สำหรับ responsive (ทุกส่วน fixed size - Log Display ใช้พื้นที่ที่เหลือ)
         self.trading_tab.columnconfigure(0, weight=1)
@@ -366,8 +324,7 @@ class TradingGUI:
         main_frame.rowconfigure(2, weight=0)  # Controls - fixed size
         main_frame.rowconfigure(3, weight=0)  # Auto Display Frame - fixed size
         main_frame.rowconfigure(4, weight=0)  # Grid/HG Settings - fixed size
-        main_frame.rowconfigure(5, weight=0)  # Status Display - fixed size
-        main_frame.rowconfigure(6, weight=1)  # Log Display - ขยายได้ (ใช้พื้นที่ที่เหลือ)
+        main_frame.rowconfigure(5, weight=1)  # Log Display - ขยายได้ (ใช้พื้นที่ที่เหลือ)
         
         # สไตล์ปุ่ม
         style = ttk.Style()
@@ -1881,44 +1838,21 @@ class TradingGUI:
                     if hasattr(self, 'auto_free_margin_snapshot_var') and 'free_margin' in account_info:
                         self.auto_free_margin_snapshot_var.set(f"${account_info['free_margin']:,.2f}")
             
-            # อัพเดท Grid status
-            grid_status = grid_manager.get_grid_status()
-            self.grid_levels_var.set(f"{grid_status['active_levels']} levels")
-            
-            # อัพเดท HG status
-            hg_status = self.hg_manager.get_hg_status()
-            self.hg_positions_var.set(f"{hg_status['placed_hg_count']} positions")
-            
             # อัพเดท positions summary
             summary = position_monitor.get_positions_summary()
-            
-            # Total P&L
             pnl = summary['total_pnl']
-            self.total_pnl_var.set(f"${pnl:.2f}")
-            
-            # เปลี่ยนสีตาม P&L
-            if pnl > 0:
-                self.pnl_label.configure(foreground="green")
-            elif pnl < 0:
-                self.pnl_label.configure(foreground="red")
-            else:
-                self.pnl_label.configure(foreground="black")
-            
-            # Margin
             margin_usage = summary['margin_usage']
-            self.margin_var.set(f"{margin_usage:.1f}%")
             
-            # Grid Exposure
-            self.grid_exposure_var.set(f"{summary['grid_net_volume']:.2f} lots")
-            
-            # Current Price
+            # ดึงราคาปัจจุบัน
             price_info = mt5_connection.get_current_price()
             if price_info:
                 current_price = price_info['bid']
-                self.price_var.set(f"{current_price:.2f}")
             else:
-                self.price_var.set("No Price Data")
                 current_price = 0
+            
+            # อัพเดท Grid และ HG status (สำหรับ Statistics tab)
+            grid_status = grid_manager.get_grid_status()
+            hg_status = self.hg_manager.get_hg_status()
             
             # 🆕 อัพเดท Statistics Tab (ถ้าเปิด Auto Mode)
             if config.grid.auto_mode and hasattr(self, 'total_orders_var'):
