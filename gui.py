@@ -1638,9 +1638,6 @@ class TradingGUI:
         
         current_price = price_info['bid']
         
-        # แสดงราคาใน GUI ทันที
-        self.price_var.set(f"{current_price:.2f}")
-        
         # เริ่ม Grid System
         if grid_manager.start_grid_trading():
             self.log_message(f"✓ Grid Trading started at {current_price:.2f}")
