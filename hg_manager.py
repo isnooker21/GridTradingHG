@@ -437,28 +437,45 @@ class HGManager:
                 return
             volume_step = 0.01
             volume = max(volume_step, round(volume / volume_step) * volume_step)
+            
+            # คำนวณกำไรที่คาดว่าจะได้จาก partial close (ก่อนปิดจริง)
+            # ใช้ profit ต่อ lot คูณด้วย volume ที่จะปิด
+            profit_per_lot = position['profit'] / position['volume'] if position['volume'] > 0 else 0
+            expected_profit = profit_per_lot * volume
+            
             success = mt5_connection.close_partial_order(hg_data['ticket'], volume)
             if success:
                 hg_data['partial_closed'] = True
-                logger.info(f"Partial close executed for HG ticket {hg_data['ticket']} (ratio {ratio:.2f})")
-                self._close_highest_loss_grid()
+                logger.info(f"Partial close executed for HG ticket {hg_data['ticket']} (ratio {ratio:.2f}, expected profit: ${expected_profit:.2f})")
+                # ส่ง expected_profit ไปให้ _close_highest_loss_grid เพื่อเช็คว่าควรปิด Grid หรือไม่
+                self._close_highest_loss_grid(expected_profit)
             else:
                 logger.warning(f"Partial close failed for HG ticket {hg_data['ticket']}")
         except Exception as e:
             logger.error(f"Error during partial close: {e}")
     
-    def _close_highest_loss_grid(self):
+    def _close_highest_loss_grid(self, available_profit: float = 0.0):
         """
         ปิดไม้ Grid ที่ขาดทุนมากที่สุดหนึ่งไม้ (ช่วยลด DD เมื่อ HG ทำกำไร)
+        แต่จะปิดเฉพาะเมื่อกำไรจาก HG >= ขาดทุนของ Grid (ไม่ให้ขาดทุน)
+        
+        Args:
+            available_profit: กำไรที่ได้จาก HG partial close (USD)
         """
         position_monitor.update_all_positions()
         worst = None
         for pos in position_monitor.grid_positions:
             if worst is None or pos['profit'] < worst['profit']:
                 worst = pos
+        
         if worst and worst['profit'] < 0:
-            logger.info(f"Closing worst grid position ticket {worst['ticket']} profit {worst['profit']:.2f}")
-            mt5_connection.close_order(worst['ticket'])
+            # เช็คว่ากำไรจาก HG >= ขาดทุนของ Grid (ใช้ค่าสัมบูรณ์)
+            grid_loss = abs(worst['profit'])
+            if available_profit >= grid_loss:
+                logger.info(f"Closing worst grid position ticket {worst['ticket']} (loss: ${grid_loss:.2f}, covered by HG profit: ${available_profit:.2f})")
+                mt5_connection.close_order(worst['ticket'])
+            else:
+                logger.debug(f"Skipping grid close: HG profit ${available_profit:.2f} < Grid loss ${grid_loss:.2f}")
         else:
             logger.debug("No grid position requires closing after partial HG profit.")
     
