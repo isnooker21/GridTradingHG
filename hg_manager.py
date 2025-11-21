@@ -447,6 +447,7 @@ class HGManager:
             if success:
                 hg_data['partial_closed'] = True
                 logger.info(f"Partial close executed for HG ticket {hg_data['ticket']} (ratio {ratio:.2f}, expected profit: ${expected_profit:.2f})")
+
                 # ส่ง expected_profit ไปให้ _close_highest_loss_grid เพื่อเช็คว่าควรปิด Grid หรือไม่
                 self._close_highest_loss_grid(expected_profit)
             else:
